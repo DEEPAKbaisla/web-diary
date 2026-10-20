@@ -1,0 +1,38 @@
+# dependencies
+/node_modules
+
+# next.js build output
+/.next/
+/out/
+next-env.d.ts
+
+# production
+/build
+
+# environment variables (never commit real secrets)
+.env*
+!.env.example
+
+# prisma generated client (regenerated via `prisma generate`)
+/src/generated
+
+# vercel
+.vercel
+
+# misc
+*.pem
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.DS_Store
+*.tsbuildinfo
+
+# test artifacts
+/coverage
+/test-results
+/playwright-report
+/blob-report
+/playwright/.cache
+
+# prisma
+/prisma/migrations/dev.db
