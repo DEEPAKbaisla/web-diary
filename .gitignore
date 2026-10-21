@@ -11,8 +11,8 @@ next-env.d.ts
 
 # environment variables (never commit real secrets)
 .env*
-!.env.example
-
+.env.example
+docs
 # prisma generated client (regenerated via `prisma generate`)
 /src/generated
 
@@ -36,3 +36,8 @@ yarn-error.log*
 
 # prisma
 /prisma/migrations/dev.db
+
+# backups
+# The exported backup files contain the owner password hash. They are never
+# committed; upload them to Google Drive or a private repository instead.
+/backups

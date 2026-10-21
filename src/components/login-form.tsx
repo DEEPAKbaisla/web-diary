@@ -5,6 +5,7 @@ import { loginAction, type LoginState } from "@/app/login/actions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "./spinner";
 
 export function LoginForm() {
   const [state, formAction, pending] = useActionState<LoginState, FormData>(
@@ -63,6 +64,7 @@ export function LoginForm() {
       </div>
 
       <Button type="submit" size="lg" className="mt-1 w-full" disabled={pending}>
+        {pending ? <Spinner className="size-4" /> : null}
         {pending ? "Login ho raha hai..." : "Login"}
       </Button>
     </form>

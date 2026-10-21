@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { login } from "./helpers";
+import { login, settle } from "./helpers";
 
 const TRIP_DATE = "2026-03-15";
 const DUPLICATE_TRIP_DATE = "2026-04-20";
@@ -26,6 +26,7 @@ test.describe("trip diary", () => {
     await expect(page.getByText("Trip save ho gayi!")).toBeVisible();
 
     await page.goto("/trips");
+    await settle(page);
     await page.getByLabel("Date").fill(TRIP_DATE);
     await page.getByRole("button", { name: "Dikhao" }).click();
 
@@ -45,6 +46,7 @@ test.describe("trip diary", () => {
       { from: "Mall", to: "Station", fare: "150", name: "Two" },
     ]) {
       await page.goto("/trips/new");
+      await settle(page);
       await page.getByLabel("Date").fill(TRIP_DATE);
       await page.getByLabel("Kahan se").fill(trip.from);
       await page.getByLabel("Kahan tak").fill(trip.to);
@@ -56,6 +58,7 @@ test.describe("trip diary", () => {
     }
 
     await page.goto("/trips");
+    await settle(page);
     await page.getByLabel("Date").fill(TRIP_DATE);
     await page.getByRole("button", { name: "Dikhao" }).click();
 
@@ -67,6 +70,7 @@ test.describe("trip diary", () => {
     page,
   }) => {
     await page.goto("/trips");
+    await settle(page);
     await page.getByLabel("Date").fill("2026-01-01");
     await page.getByRole("button", { name: "Dikhao" }).click();
 
@@ -79,6 +83,7 @@ test.describe("trip diary", () => {
     page,
   }) => {
     await page.goto("/trips/new");
+    await settle(page);
     await page.getByLabel("Kahan se").fill("A");
     await page.getByLabel("Kahan tak").fill("B");
     await page.getByLabel("Kiraya (₹)").fill("-5");
@@ -107,6 +112,7 @@ test.describe("trip diary", () => {
     });
 
     await page.goto("/trips/new");
+    await settle(page);
     await page.getByLabel("Date").fill(DUPLICATE_TRIP_DATE);
     await page.getByLabel("Kahan se").fill("Duplicate Test");
     await page.getByLabel("Kahan tak").fill("Nowhere");
@@ -124,6 +130,7 @@ test.describe("trip diary", () => {
     expect(createRequests).toBe(1);
 
     await page.goto("/trips");
+    await settle(page);
     await page.getByLabel("Date").fill(DUPLICATE_TRIP_DATE);
     await page.getByRole("button", { name: "Dikhao" }).click();
     await expect(page.getByText(/1 trip/)).toBeVisible();

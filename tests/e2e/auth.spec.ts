@@ -1,11 +1,12 @@
 import { expect, test } from "@playwright/test";
-import { login, OWNER_EMAIL, OWNER_PASSWORD } from "./helpers";
+import { login, OWNER_EMAIL, OWNER_PASSWORD, settle } from "./helpers";
 
 test.describe("authentication", () => {
   test("redirects an unauthenticated visitor from the diary to the login page", async ({
     page,
   }) => {
     await page.goto("/trips");
+    await settle(page);
     await expect(page).toHaveURL(/\/login/);
   });
 
@@ -13,6 +14,7 @@ test.describe("authentication", () => {
     page,
   }) => {
     await page.goto("/trips/new");
+    await settle(page);
     await expect(page).toHaveURL(/\/login/);
   });
 
@@ -20,11 +22,13 @@ test.describe("authentication", () => {
     page,
   }) => {
     await page.goto("/");
+    await settle(page);
     await expect(page).toHaveURL(/\/login/);
   });
 
   test("shows a generic error for a wrong password", async ({ page }) => {
     await page.goto("/login");
+    await settle(page);
     await page.getByLabel("Email").fill(OWNER_EMAIL);
     await page.getByLabel("Password").fill("definitely-wrong-password");
     await page.getByRole("button", { name: "Login" }).click();
@@ -42,6 +46,7 @@ test.describe("authentication", () => {
     page,
   }) => {
     await page.goto("/login");
+    await settle(page);
     await page.getByLabel("Email").fill("nobody@test.local");
     await page.getByLabel("Password").fill("whatever-password");
     await page.getByRole("button", { name: "Login" }).click();
@@ -53,6 +58,7 @@ test.describe("authentication", () => {
 
   test("signs the owner in and lands on the diary", async ({ page }) => {
     await page.goto("/login");
+    await settle(page);
     await page.getByLabel("Email").fill(OWNER_EMAIL);
     await page.getByLabel("Password").fill(OWNER_PASSWORD);
     await page.getByRole("button", { name: "Login" }).click();
@@ -70,6 +76,7 @@ test.describe("authentication", () => {
     await expect(page).toHaveURL(/\/login/);
 
     await page.goto("/trips");
+    await settle(page);
     await expect(page).toHaveURL(/\/login/);
   });
 
@@ -77,6 +84,7 @@ test.describe("authentication", () => {
     page,
   }) => {
     await page.goto("/trips");
+    await settle(page);
     await expect(page).toHaveURL(/\/login/);
     await expect(page.locator("body")).not.toContainText("9876543210");
   });

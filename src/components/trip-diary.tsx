@@ -2,7 +2,10 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { TripDateFilter } from "./trip-date-filter";
-import { TripList, type TripResponse } from "./trip-list";
+import { TripList } from "./trip-list";
+import { Skeleton } from "@/components/ui/skeleton";
+import { cn } from "@/lib/utils";
+import type { TripResponse } from "@/lib/trip-types";
 
 function todayIso(): string {
   const now = new Date();
@@ -12,8 +15,14 @@ function todayIso(): string {
   return `${year}-${month}-${day}`;
 }
 
-export function TripDiary() {
-  const [date, setDate] = useState<string>(() => todayIso());
+export function TripDiary({
+  initialDate: requestedDate,
+}: {
+  initialDate?: string;
+}) {
+  const [date, setDate] = useState<string>(
+    () => requestedDate ?? todayIso(),
+  );
   const [data, setData] = useState<TripResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +75,27 @@ export function TripDiary() {
         </p>
       ) : null}
 
-      {data ? <TripList data={data} /> : null}
+      <div
+        aria-busy={loading}
+        className={cn(
+          "transition-opacity duration-200",
+          loading && data && "pointer-events-none opacity-50",
+        )}
+      >
+        {loading && !data ? <DiarySkeleton /> : null}
+        {data ? <TripList data={data} /> : null}
+      </div>
+    </div>
+  );
+}
+
+/** Placeholder shown while the very first day is being fetched. */
+function DiarySkeleton() {
+  return (
+    <div className="flex flex-col gap-4" aria-hidden="true">
+      <Skeleton className="h-14 w-full rounded-xl" />
+      <Skeleton className="h-28 w-full rounded-xl" />
+      <Skeleton className="h-28 w-full rounded-xl" />
     </div>
   );
 }

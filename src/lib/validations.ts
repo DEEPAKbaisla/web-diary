@@ -43,6 +43,45 @@ export function toDateOnly(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
+/** True for a real month in `YYYY-MM` form. */
+export function isValidMonth(value: string): boolean {
+  if (!/^\d{4}-\d{2}$/.test(value)) return false;
+  const month = Number(value.slice(5, 7));
+  return month >= 1 && month <= 12;
+}
+
+/** First day of the given `YYYY-MM` month, at UTC midnight. */
+export function monthStart(value: string): Date {
+  const [year, month] = value.split("-").map((part) => Number(part));
+  return new Date(Date.UTC(year, month - 1, 1));
+}
+
+/**
+ * First day of the month *after* `YYYY-MM`, at UTC midnight. Used as an
+ * exclusive upper bound so the range never spills into the next month.
+ */
+export function monthEndExclusive(value: string): Date {
+  const [year, month] = value.split("-").map((part) => Number(part));
+  return new Date(Date.UTC(year, month, 1));
+}
+
+/** Shift a `YYYY-MM` month by `delta` months, rolling over the year. */
+export function shiftMonth(value: string, delta: number): string {
+  const [year, month] = value.split("-").map((part) => Number(part));
+  const shifted = new Date(Date.UTC(year, month - 1 + delta, 1));
+  return `${shifted.getUTCFullYear()}-${String(shifted.getUTCMonth() + 1).padStart(2, "0")}`;
+}
+
+/** Human label for a `YYYY-MM` month, e.g. "October 2026". */
+export function formatMonthLabel(value: string): string {
+  const [year, month] = value.split("-").map((part) => Number(part));
+  return new Date(Date.UTC(year, month - 1, 1)).toLocaleDateString("en-IN", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC",
+  });
+}
+
 // ---------------------------------------------------------------------------
 // Schemas
 // ---------------------------------------------------------------------------
@@ -115,6 +154,25 @@ export const tripCreateSchema = z.object({
 export const tripDateQuerySchema = z.object({
   date: dateOnlySchema,
 });
+
+const monthSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}$/, "Month YYYY-MM format me hona chahiye")
+  .refine(isValidMonth, "Ye month sahi nahi hai");
+
+/**
+ * The trips endpoint is filtered by exactly one period: a single `date` or a
+ * whole `month`. Supplying both, or neither, is rejected.
+ */
+export const tripsQuerySchema = z
+  .object({
+    date: dateOnlySchema.optional(),
+    month: monthSchema.optional(),
+  })
+  .refine((value) => Boolean(value.date) !== Boolean(value.month), {
+    message: "date ya month me se ek chahiye",
+    path: ["date"],
+  });
 
 export type TripCreateInput = z.infer<typeof tripCreateSchema>;
 export type LoginInput = z.infer<typeof loginSchema>;

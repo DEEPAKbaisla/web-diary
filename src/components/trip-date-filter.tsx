@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "./spinner";
 
 type Props = {
   value: string;
@@ -45,6 +46,7 @@ export function TripDateFilter({ value, onChange, onSearch, loading }: Props) {
             className="sm:w-36"
             disabled={loading || !value}
           >
+            {loading ? <Spinner className="size-4" /> : null}
             {loading ? "Loading..." : "Dikhao"}
           </Button>
         </form>

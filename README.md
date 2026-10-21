@@ -28,6 +28,7 @@ returned to the authenticated owner.
 | Auth | Better Auth 1.7 (email + password, database sessions) |
 | Password hashing | Argon2id via `@node-rs/argon2` |
 | Rate limiting | PostgreSQL-backed fixed-window limiter (shared across serverless instances) |
+| Backups | Google Sheet (Apps Script) + standby PostgreSQL, every 15 min and on every save |
 | Tests | Vitest (unit + API) and Playwright (end-to-end) |
 | Hosting | Vercel |
 
@@ -84,6 +85,11 @@ are exposed to the browser.
 | `TRIP_RATE_LIMIT_MAX` | no | Trip create/read requests per window, per user **and** per IP. Default `120`. |
 | `TRIP_RATE_LIMIT_WINDOW_SECONDS` | no | Default `60`. |
 | `MAX_FARE_INR` | no | Maximum accepted fare in whole rupees. Default `1000000` (₹10,00,000). |
+| `SECONDARY_DATABASE_URL` | backup | Standby PostgreSQL (Supabase) that mirrors the primary. Use **port 5432**, never 6543. |
+| `GOOGLE_SHEET_ID` | backup | Id of the Google Sheet that receives the copy. |
+| `GOOGLE_SHEET_SCRIPT_URL` | backup | The Apps Script `/exec` url that writes the Sheet. |
+| `GOOGLE_SHEET_TOKEN` | backup | Shared secret between this app and the Apps Script. |
+| `BACKUP_SECRET` | backup | Bearer token for `POST /api/cron/backup`. `CRON_SECRET` is accepted as an alternative. |
 
 `.env*` is git-ignored; only `.env.example` (placeholders only) is committed.
 
@@ -256,6 +262,11 @@ What is covered:
    npm run db:owner
    ```
 
+7. Set up the backups — the Google Sheet, the standby database and the
+   fifteen-minute schedule — as described in
+   [`docs/backup-setup.md`](docs/backup-setup.md). The backup environment
+   variables have to be added to Vercel as well, and the app redeployed.
+
 Set `BETTER_AUTH_URL` to the production domain and add it (plus any preview
 domain) to `TRUSTED_ORIGINS`.
 
@@ -344,12 +355,22 @@ single-user app.
 
 ### Privacy
 
-* Customer data is never sent to any third party. There is no analytics, no
-  error-reporting service and no external font/CDN dependency.
+* Customer data is never sent to any third party **unless the backup is
+  switched on**. The Google Sheet copy does contain customer names and mobile
+  numbers, so enabling it means customer data lives in a Google account. See
+  the note at the end of
+  [`docs/backup-setup.md`](docs/backup-setup.md).
+* There is no analytics, no error-reporting service and no external
+  font/CDN dependency.
 * Phone numbers and names are not written to `localStorage`, `sessionStorage`
   or cookies — only the session token is stored in a cookie.
 * Customer identifiers are not placed in URLs; the diary is queried by date.
 * Every table and API response is scoped to the authenticated owner.
+* The backup never copies live session tokens to the standby database, and
+  the standby URL, the sheet token and the backup secret are never logged.
+* The standby database is not reachable over the Supabase REST API: every
+  table has Row Level Security on, and the `anon` and `authenticated` grants
+  have been revoked. The publishable key cannot read the diary.
 
 ---
 
@@ -376,19 +397,91 @@ pull request.
 
 ## Backups & recovery
 
-Neon offers point-in-time recovery and branch/snapshot features on paid plans.
-Recommended setup:
+The diary is copied to two independent places every fifteen minutes, and again
+within seconds of every new trip being saved:
 
-* enable Neon point-in-time recovery (or a daily snapshot) for the production
-  branch,
-* keep development and production on **separate Neon branches/projects** with
-  separate credentials,
-* restore procedure: create a new branch from the last good snapshot, point
-  `DATABASE_URL` at it, run `npx prisma migrate deploy`, verify, then switch
-  the production connection string over.
+| Layer | Where | Why |
+| --- | --- | --- |
+| **Google Sheet** | your Google account | a human-readable copy you can open without any tooling, and a copy that does not depend on either database provider |
+| **Standby database** | a second PostgreSQL (Supabase) | a true hot standby — promoting it is a `DATABASE_URL` change and nothing else |
+| **Backup file** | `backups/` on your machine | provider-agnostic: a plain JSON file that restores into any PostgreSQL |
 
-`prisma migrate deploy` is the only migration command used in production; it
-applies committed migrations only and never drops data.
+The **schema** already lives in git (`prisma/migrations/`), so a backup only
+carries the *data*. Restoring is always the same three steps: apply the
+migrations, import the data, point `DATABASE_URL` at it.
+
+### How it runs
+
+```
+Neon (primary) ──read──▶ runBackupSync() ──▶ Supabase (standby)
+                                  └────────▶ Google Sheet
+```
+
+`runBackupSync()` is one shared core with three entry points:
+
+| Trigger | When |
+| --- | --- |
+| `POST /api/cron/backup` | every 15 minutes, fired by a Supabase `pg_cron` job |
+| `after()` on trip save | right after a trip is recorded, without blocking the response |
+| `npm run backup:sync` | whenever you want it, from the terminal |
+
+A run that finds nothing new does nothing: the watermarks in
+`_backup_state` hold the trip count and the newest `updatedAt` each target
+has seen, so an unchanged diary costs a single cheap query instead of a full
+rewrite of the sheet.
+
+The rules the backup follows:
+
+* the primary database is **only ever read** — a backup cannot damage the
+  thing it is backing up;
+* the standby is written with `ON CONFLICT DO UPDATE` and **never deletes**;
+* `session`, `verification` and `rateLimitBucket` are **not** copied — live
+  session tokens have no business in a second database;
+* the endpoint is **fail-closed**: with no `BACKUP_SECRET` configured it
+  refuses to run rather than serving the diary to anyone who finds the url;
+* the standby is **locked down**: Row Level Security on every table, and the
+  `anon` / `authenticated` grants revoked, so the copy is not readable over
+  the Supabase REST API with the public publishable key.
+
+### Setup
+
+The full click-by-click setup — the Google Sheet, the Apps Script, the
+Supabase project, the hardening and the fifteen-minute cron job — is in
+**[`docs/backup-setup.md`](docs/backup-setup.md)**.
+
+### Commands
+
+```bash
+npm run backup:sync            # every configured target
+npm run backup:sync -- --force # copy even when nothing changed
+npm run backup:sync -- --sheet # only the Google Sheet
+npm run backup:sync -- --db    # only the standby database
+npm run backup:file            # write backups\diary-<timestamp>.json and .csv
+npm run restore:file -- --file backups\diary-<timestamp>.json
+npm run db:migrate:deploy:secondary
+```
+
+### Checking that it works
+
+* the **`Meta` tab** of the Google Sheet shows the last successful backup,
+  the trip count, the total fare and the state of the database copy;
+* `_backup_sync_log` on the standby records every run, successful or not;
+* `cron.job_run_details` in Supabase records every scheduled job.
+
+### Restore procedure
+
+1. Create a new database and point `DATABASE_URL` at it.
+2. `npm run db:migrate:deploy` — the schema comes back from git.
+3. Bring the data back: `npm run backup:db` (from the standby),
+   `npm run restore:file -- --file <path>` (from a backup file), or by hand
+   from the `Trips` tab of the Google Sheet.
+4. `npm run db:owner` — only needed if the restored copy had no credential
+   rows. A copy that includes them keeps the existing password working.
+5. Point Vercel at the new database and redeploy.
+
+Neon also offers point-in-time recovery and branch/snapshot features on paid
+plans. That is a fifth layer, and it is worth enabling on the primary
+branch.
 
 ---
 
@@ -401,6 +494,13 @@ prisma/
 scripts/
   create-owner.ts            One-time owner provisioning
   seed-test-owner.ts         Test database seeding (refuses non-test DBs)
+  migrate-secondary.ts       Applies the migrations to the standby database
+  backup-sync.ts             Runs the backup from the command line
+  export-data-file.ts        Writes the portable JSON + CSV backup
+  restore-from-data-file.ts  Restores a portable backup file
+  apps-script/Code.gs        The Google Apps Script that writes the Sheet
+docs/
+  backup-setup.md            Backup setup and the recovery runbook
 src/
   app/
     login/page.tsx           Page A - login
@@ -410,6 +510,7 @@ src/
     api/
       auth/[...all]/route.ts Better Auth handler
       trips/route.ts         POST create, GET list + summary
+      cron/backup/route.ts   Scheduled backup trigger (bearer token)
     layout.tsx, globals.css
   components/
     login-form.tsx
@@ -430,6 +531,15 @@ src/
     csrf.ts                  Same-origin check
     client-ip.ts             Client IP extraction
     errors.ts                Consistent JSON responses
+    backup/                  The backup subsystem (see below)
+      types.ts               Shared result and row types
+      source.ts              Reads the diary out of the primary database
+      sheet-payload.ts       Builds the Google Sheet payload (pure)
+      google-sheet.ts        Pushes the payload to the Apps Script
+      secondary.ts           Standby client and the mirror upserts
+      state.ts               Lock, watermarks and the run history
+      data-file.ts           The portable backup file format
+      sync.ts                The orchestrator
   proxy.ts                   Auth redirect + per-request CSP nonce
 tests/
   unit/                      Vitest unit tests
@@ -450,8 +560,17 @@ tests/
 | `npm run test:e2e` | Playwright end-to-end tests |
 | `npm run db:migrate:dev` | Create and apply a migration (dev) |
 | `npm run db:migrate:deploy` | Apply migrations (production) |
+| `npm run db:migrate:deploy:secondary` | Apply migrations to the standby database |
+| `npm run db:url:fix` | Repair `SECONDARY_DATABASE_URL` in `.env` |
+| `npm run db:harden:secondary` | Lock the standby down (RLS + revoke grants) |
+| `npm run db:cron:setup` | Install the fifteen-minute schedule on the standby |
 | `npm run db:generate` | Regenerate the Prisma client |
 | `npm run db:owner` | Create the owner account |
+| `npm run backup:sync` | Run the backup (both targets) |
+| `npm run backup:sheet` | Copy the diary to the Google Sheet only |
+| `npm run backup:db` | Copy the diary to the standby database only |
+| `npm run backup:file` | Write a portable JSON + CSV backup |
+| `npm run restore:file` | Restore a portable backup file |
 | `npm run auth:check` | Verify the Better Auth schema matches the database |
 
 ---

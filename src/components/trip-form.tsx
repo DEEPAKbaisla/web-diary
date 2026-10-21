@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Spinner } from "./spinner";
 
 type FormState = {
   tripDate: string;
@@ -276,6 +277,7 @@ export function TripForm() {
 
       <div className="sm:col-span-2">
         <Button type="submit" size="lg" className="w-full" disabled={submitting}>
+          {submitting ? <Spinner className="size-4" /> : null}
           {submitting ? "Saving..." : "Trip Save Karein"}
         </Button>
       </div>
