@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { tripCreateSchema, MAX_FARE_INR } from "@/lib/validations";
+import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,16 +44,23 @@ function Field({
   id,
   label,
   error,
+  className,
   children,
 }: {
   id: string;
   label: string;
   error?: string;
+  className?: string;
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col gap-1.5">
-      <Label htmlFor={id}>{label}</Label>
+    <div className={cn("flex flex-col gap-2", className)}>
+      <Label
+        htmlFor={id}
+        className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground"
+      >
+        {label}
+      </Label>
       {children}
       {error ? (
         <p className="text-xs text-destructive" aria-live="polite">
@@ -141,15 +149,22 @@ export function TripForm() {
 
   const statusClass =
     status?.type === "success"
-      ? "border-emerald-600/40 bg-emerald-600/10 text-emerald-700 dark:text-emerald-400"
-      : "border-destructive/40 bg-destructive/10 text-destructive";
+      ? "border-emerald-700/30 bg-emerald-600/10 text-emerald-800 dark:text-emerald-300"
+      : "border-destructive/30 bg-destructive/10 text-destructive";
 
   return (
-    <form onSubmit={onSubmit} noValidate className="mt-4 flex flex-col gap-4">
+    <form
+      onSubmit={onSubmit}
+      noValidate
+      className="grid grid-cols-1 gap-x-5 gap-y-5 sm:grid-cols-2"
+    >
       {status ? (
         <p
           role="status"
-          className={`rounded-lg border px-3 py-2 text-sm ${statusClass}`}
+          className={cn(
+            "rounded-lg border px-3 py-2.5 text-sm sm:col-span-2",
+            statusClass,
+          )}
         >
           {status.message}
         </p>
@@ -163,32 +178,7 @@ export function TripForm() {
           onChange={(event) => update("tripDate", event.target.value)}
           required
           aria-invalid={Boolean(fieldErrors.tripDate)}
-        />
-      </Field>
-
-      <Field id="fromLocation" label="Kahan se" error={fieldErrors.fromLocation}>
-        <Input
-          id="fromLocation"
-          value={form.fromLocation}
-          onChange={(event) => update("fromLocation", event.target.value)}
-          placeholder="e.g. Connaught Place"
-          maxLength={200}
-          required
-          autoComplete="off"
-          aria-invalid={Boolean(fieldErrors.fromLocation)}
-        />
-      </Field>
-
-      <Field id="toLocation" label="Kahan tak" error={fieldErrors.toLocation}>
-        <Input
-          id="toLocation"
-          value={form.toLocation}
-          onChange={(event) => update("toLocation", event.target.value)}
-          placeholder="e.g. India Gate"
-          maxLength={200}
-          required
-          autoComplete="off"
-          aria-invalid={Boolean(fieldErrors.toLocation)}
+          className="h-11"
         />
       </Field>
 
@@ -206,6 +196,43 @@ export function TripForm() {
           required
           autoComplete="off"
           aria-invalid={Boolean(fieldErrors.fare)}
+          className="h-11 font-mono tabular-nums"
+        />
+      </Field>
+
+      <Field
+        id="fromLocation"
+        label="Kahan se"
+        error={fieldErrors.fromLocation}
+      >
+        <Input
+          id="fromLocation"
+          value={form.fromLocation}
+          onChange={(event) => update("fromLocation", event.target.value)}
+          placeholder="e.g. Connaught Place"
+          maxLength={200}
+          required
+          autoComplete="off"
+          aria-invalid={Boolean(fieldErrors.fromLocation)}
+          className="h-11"
+        />
+      </Field>
+
+      <Field
+        id="toLocation"
+        label="Kahan tak"
+        error={fieldErrors.toLocation}
+      >
+        <Input
+          id="toLocation"
+          value={form.toLocation}
+          onChange={(event) => update("toLocation", event.target.value)}
+          placeholder="e.g. India Gate"
+          maxLength={200}
+          required
+          autoComplete="off"
+          aria-invalid={Boolean(fieldErrors.toLocation)}
+          className="h-11"
         />
       </Field>
 
@@ -223,6 +250,7 @@ export function TripForm() {
           required
           autoComplete="off"
           aria-invalid={Boolean(fieldErrors.customerName)}
+          className="h-11"
         />
       </Field>
 
@@ -242,12 +270,15 @@ export function TripForm() {
           required
           autoComplete="off"
           aria-invalid={Boolean(fieldErrors.customerPhone)}
+          className="h-11 font-mono tabular-nums"
         />
       </Field>
 
-      <Button type="submit" size="lg" className="mt-1 w-full" disabled={submitting}>
-        {submitting ? "Saving..." : "Trip Save Karein"}
-      </Button>
+      <div className="sm:col-span-2">
+        <Button type="submit" size="lg" className="w-full" disabled={submitting}>
+          {submitting ? "Saving..." : "Trip Save Karein"}
+        </Button>
+      </div>
     </form>
   );
 }

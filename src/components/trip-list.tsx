@@ -1,5 +1,3 @@
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-
 export type TripDto = {
   id: string;
   tripDate: string;
@@ -22,17 +20,29 @@ function formatCurrency(amount: number): string {
   return `₹${amount.toLocaleString("en-IN")}`;
 }
 
-function formatDateTime(iso: string): string {
-  return new Date(iso).toLocaleString("en-IN", {
-    dateStyle: "medium",
-    timeStyle: "short",
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("en-IN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function formatDay(value: string): string {
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return date.toLocaleDateString("en-IN", {
+    weekday: "short",
+    day: "2-digit",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC",
   });
 }
 
 export function TripList({ data }: { data: TripResponse }) {
   if (data.trips.length === 0) {
     return (
-      <p className="rounded-lg border border-dashed border-border bg-muted/30 px-4 py-8 text-center text-sm text-muted-foreground">
+      <p className="rounded-xl border border-dashed border-border bg-card/60 px-4 py-12 text-center text-sm text-muted-foreground">
         Is date ki koi trip nahi mili.
       </p>
     );
@@ -40,48 +50,54 @@ export function TripList({ data }: { data: TripResponse }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center justify-between gap-2 rounded-lg border bg-card px-4 py-3">
+      <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl border border-border bg-muted/50 px-4 py-3">
         <p className="text-sm">
-          <span className="font-medium">{data.count}</span>{" "}
-          {data.count === 1 ? "trip" : "trips"} · {data.date}
-        </p>
-        <p className="text-sm">
-          Total kiraya:{" "}
-          <span className="font-semibold">
-            {formatCurrency(data.totalFare)}
+          <span className="font-mono font-semibold tabular-nums">
+            {data.count}
+          </span>{" "}
+          {data.count === 1 ? "trip" : "trips"}{" "}
+          <span className="text-muted-foreground">
+            · {formatDay(data.date)}
           </span>
+        </p>
+        <p className="font-heading text-base font-semibold tabular-nums">
+          Total kiraya: {formatCurrency(data.totalFare)}
         </p>
       </div>
 
       <ul className="flex flex-col gap-3">
         {data.trips.map((trip) => (
           <li key={trip.id}>
-            <Card>
-              <CardHeader>
-                <CardTitle className="text-base">
-                  {trip.fromLocation} → {trip.toLocation}
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="flex flex-col gap-1 text-sm">
-                <p>
-                  <span className="text-muted-foreground">Kiraya:</span>{" "}
-                  <span className="font-semibold">
+            <div className="flex overflow-hidden rounded-xl border border-border bg-card shadow-diary">
+              <div className="flex w-[4.25rem] shrink-0 flex-col items-center justify-center gap-1 border-r border-border/70 bg-muted/50 px-2 py-4">
+                <span className="font-mono text-sm font-semibold tabular-nums">
+                  {formatTime(trip.createdAt)}
+                </span>
+                <span className="font-mono text-[0.58rem] uppercase tracking-[0.18em] text-muted-foreground">
+                  entry
+                </span>
+              </div>
+
+              <div className="min-w-0 flex-1 p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="min-w-0 font-heading text-base font-semibold leading-snug">
+                    <span>{trip.fromLocation}</span>
+                    <span className="mx-1.5 text-muted-foreground">→</span>
+                    <span>{trip.toLocation}</span>
+                  </h3>
+                  <p className="shrink-0 font-mono text-base font-semibold tabular-nums">
                     {formatCurrency(trip.fare)}
+                  </p>
+                </div>
+
+                <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
+                  <span className="text-foreground/80">{trip.customerName}</span>
+                  <span className="font-mono tabular-nums">
+                    {trip.customerPhone}
                   </span>
-                </p>
-                <p>
-                  <span className="text-muted-foreground">Customer:</span>{" "}
-                  {trip.customerName}
-                </p>
-                <p>
-                  <span className="text-muted-foreground">Mobile:</span>{" "}
-                  {trip.customerPhone}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  Record: {formatDateTime(trip.createdAt)}
-                </p>
-              </CardContent>
-            </Card>
+                </div>
+              </div>
+            </div>
           </li>
         ))}
       </ul>
