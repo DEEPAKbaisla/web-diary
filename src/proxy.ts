@@ -35,12 +35,26 @@ export async function proxy(request: NextRequest) {
   const requestHeaders = new Headers(request.headers);
   requestHeaders.set("x-nonce", nonce);
 
+  const { pathname } = request.nextUrl;
+  const needsAuth = pathname.startsWith("/trips");
+  const isLoginRoute = pathname === "/login";
+
   // Page-level protection. API routes re-check the session inside their
   // handlers, so Proxy is only an optimistic redirect for pages here.
-  if (request.nextUrl.pathname.startsWith("/trips")) {
+  //
+  // The login route is guarded in the other direction: a signed-in owner is
+  // sent to the diary, so the login form is never shown to them. This runs
+  // before the page renders, which also covers client-side navigations that
+  // would otherwise reuse a cached copy of the login page.
+  if (needsAuth || isLoginRoute) {
     const session = await auth.api.getSession({ headers: await headers() });
-    if (!session) {
+
+    if (needsAuth && !session) {
       return NextResponse.redirect(new URL("/login", request.url));
+    }
+
+    if (isLoginRoute && session) {
+      return NextResponse.redirect(new URL("/trips", request.url));
     }
   }
 

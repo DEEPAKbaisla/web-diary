@@ -7,7 +7,7 @@ Three screens, nothing else:
 | Page | Route | Purpose |
 | --- | --- | --- |
 | **Login** | `/login` | Owner sign-in (email + password) |
-| **Add Trip** | `/trips/new` | Record one trip (6 fields, Hinglish labels) |
+| **Add Trip** | `/trips/new` | Record one trip (7 fields, Hinglish labels) |
 | **Trip Diary** | `/trips` | All trips for a chosen date, with count and total fare |
 
 There is no public registration, no dashboard, no analytics, no maps and no
@@ -85,6 +85,7 @@ are exposed to the browser.
 | `TRIP_RATE_LIMIT_MAX` | no | Trip create/read requests per window, per user **and** per IP. Default `120`. |
 | `TRIP_RATE_LIMIT_WINDOW_SECONDS` | no | Default `60`. |
 | `MAX_FARE_INR` | no | Maximum accepted fare in whole rupees. Default `1000000` (₹10,00,000). |
+| `MAX_KHARCH_INR` | no | Maximum accepted kharch in whole rupees. Default `1000000` (₹10,00,000). |
 | `SECONDARY_DATABASE_URL` | backup | Standby PostgreSQL (Supabase) that mirrors the primary. Use **port 5432**, never 6543. |
 | `GOOGLE_SHEET_ID` | backup | Id of the Google Sheet that receives the copy. |
 | `GOOGLE_SHEET_SCRIPT_URL` | backup | The Apps Script `/exec` url that writes the Sheet. |
@@ -118,6 +119,7 @@ rateLimitBucket              (fixed-window rate limit counters)
 | `fromLocation` | `VARCHAR(200)` | |
 | `toLocation` | `VARCHAR(200)` | |
 | `fare` | `INTEGER` | whole rupees, non-negative, capped by `MAX_FARE_INR` |
+| `kharch` | `INTEGER` | whole rupees, non-negative, defaults to `0`, capped by `MAX_KHARCH_INR` |
 | `customerName` | `VARCHAR(120)` | |
 | `customerPhone` | `VARCHAR(15)` | stored as a normalised 10-digit number |
 | `createdAt` / `updatedAt` | `TIMESTAMP(3)` | |
@@ -205,13 +207,14 @@ cp .env.example .env.test
 # DATABASE_URL="postgresql://user:pass@host:5432/diary_test?sslmode=require"
 ```
 
-A throwaway local database is enough:
+A throwaway local database is enough (port 55555 avoids the range that Windows
+reserves for Hyper-V, 55368-55467):
 
 ```bash
 docker run -d --name diary-pg \
   -e POSTGRES_PASSWORD=postgres -e POSTGRES_USER=postgres -e POSTGRES_DB=diary_test \
-  -p 55432:5432 postgres:16
-# then set DATABASE_URL="postgresql://postgres:postgres@localhost:55432/diary_test?sslmode=disable"
+  -p 55555:5432 postgres:16
+# then set DATABASE_URL="postgresql://postgres:postgres@localhost:55555/diary_test?sslmode=disable"
 ```
 
 `tests/global-setup.ts` applies the migrations to the test database before the
@@ -223,9 +226,10 @@ What is covered:
 
 | Area | Where |
 | --- | --- |
-| Valid/invalid trip creation, invalid dates, fares, phones, missing and oversized fields | `tests/unit/validations.test.ts`, `tests/api/trips.test.ts` |
+| Valid/invalid trip creation, invalid dates, fares, kharch, phones, missing and oversized fields | `tests/unit/validations.test.ts`, `tests/api/trips.test.ts` |
 | Unauthenticated API requests and direct page access | `tests/api/trips.test.ts`, `tests/e2e/auth.spec.ts` |
 | Date-wise retrieval, trip count and total fare, newest-first ordering | `tests/api/trips.test.ts`, `tests/e2e/trips.spec.ts` |
+| Monthly report: per-day grouping, total fare, total kharch and the bachat | `tests/api/trips-month.test.ts`, `tests/e2e/monthly.spec.ts` |
 | Ownership enforcement (another user's trips are never returned) | `tests/api/trips.test.ts` |
 | Login rate limiting → HTTP 429 | `tests/e2e/zz-rate-limit.spec.ts` |
 | Trip API rate limiting → HTTP 429 | `tests/api/trips.test.ts` |
@@ -298,10 +302,10 @@ Security is applied in layers; no single control is relied upon.
 
 * **One Zod schema** (`src/lib/validations.ts`) validates the trip on the
   client *and* on the server. The server copy is authoritative.
-* Dates must be real calendar dates in `YYYY-MM-DD`; fares must be
-  non-negative integers within `MAX_FARE_INR`; phone numbers must be valid
-  Indian mobile numbers (normalised to 10 digits); text fields are trimmed and
-  length-capped.
+* Dates must be real calendar dates in `YYYY-MM-DD`; fares and kharch must be
+  non-negative integers within `MAX_FARE_INR` and `MAX_KHARCH_INR`; phone
+  numbers must be valid Indian mobile numbers (normalised to 10 digits); text
+  fields are trimmed and length-capped.
 * Request bodies over 10 KB are rejected with `413`.
 * Prisma parameterises every query; no string-built SQL.
 * All user-supplied text is rendered as React text — no `dangerouslySetInnerHTML`

@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "trip" ADD COLUMN     "kharch" INTEGER NOT NULL DEFAULT 0;

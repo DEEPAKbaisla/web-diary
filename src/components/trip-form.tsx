@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { tripCreateSchema, MAX_FARE_INR } from "@/lib/validations";
+import { tripCreateSchema, MAX_FARE_INR, MAX_KHARCH_INR } from "@/lib/validations";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,6 +13,7 @@ type FormState = {
   fromLocation: string;
   toLocation: string;
   fare: string;
+  kharch: string;
   customerName: string;
   customerPhone: string;
 };
@@ -36,6 +37,7 @@ function emptyForm(): FormState {
     fromLocation: "",
     toLocation: "",
     fare: "",
+    kharch: "",
     customerName: "",
     customerPhone: "",
   };
@@ -86,6 +88,8 @@ export function TripForm() {
     const parsed = tripCreateSchema.safeParse({
       ...form,
       fare: form.fare === "" ? Number.NaN : Number(form.fare),
+      // An empty kharch box means the trip had no extra expenses.
+      kharch: form.kharch === "" ? 0 : Number(form.kharch),
     });
 
     if (parsed.success) {
@@ -122,6 +126,7 @@ export function TripForm() {
           fromLocation: form.fromLocation,
           toLocation: form.toLocation,
           fare: Number(form.fare),
+          kharch: form.kharch === "" ? 0 : Number(form.kharch),
           customerName: form.customerName,
           customerPhone: form.customerPhone,
         }),
@@ -197,6 +202,23 @@ export function TripForm() {
           required
           autoComplete="off"
           aria-invalid={Boolean(fieldErrors.fare)}
+          className="h-11 font-mono tabular-nums"
+        />
+      </Field>
+
+      <Field id="kharch" label="Kharch (₹)" error={fieldErrors.kharch}>
+        <Input
+          id="kharch"
+          type="number"
+          inputMode="numeric"
+          min={0}
+          max={MAX_KHARCH_INR}
+          step={1}
+          value={form.kharch}
+          onChange={(event) => update("kharch", event.target.value)}
+          placeholder="e.g. 50"
+          autoComplete="off"
+          aria-invalid={Boolean(fieldErrors.kharch)}
           className="h-11 font-mono tabular-nums"
         />
       </Field>

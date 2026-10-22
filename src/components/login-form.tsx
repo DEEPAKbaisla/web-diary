@@ -1,7 +1,9 @@
 "use client";
 
-import { useActionState } from "react";
+import { useActionState, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { loginAction, type LoginState } from "@/app/login/actions";
+import { useSession } from "@/lib/auth-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -12,6 +14,18 @@ export function LoginForm() {
     loginAction,
     null,
   );
+  const router = useRouter();
+  const { data: session } = useSession();
+
+  // The page and the proxy both redirect a signed-in owner away from /login.
+  // This is the last line of defence for the one case neither of them can
+  // see: the router restoring a cached copy of the login page without asking
+  // the server, e.g. when going back in the browser's history.
+  useEffect(() => {
+    if (session?.user) {
+      router.replace("/trips");
+    }
+  }, [session, router]);
 
   return (
     <form action={formAction} className="flex flex-col gap-5">

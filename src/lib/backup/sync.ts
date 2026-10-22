@@ -1,6 +1,7 @@
 import { buildSheetPayload } from "./sheet-payload";
 import { isGoogleSheetConfigured, pushToGoogleSheet } from "./google-sheet";
 import {
+  assertPrimaryIsNotATestDatabase,
   assertSecondaryIsDistinct,
   describeMirrorError,
   getSecondaryClient,
@@ -21,6 +22,7 @@ import {
 } from "./state";
 import type {
   BackupSyncResult,
+  BackupTarget,
   BackupTargetResult,
   BackupTrigger,
 } from "./types";
@@ -172,6 +174,28 @@ export async function runBackupSync(
 
   if (!sheetEnabled && !databaseEnabled) {
     return finish([], 0, true);
+  }
+
+  // A test database must never reach a backup target. The automated suite
+  // runs against a throwaway database, and a stray environment variable would
+  // otherwise replace the owner's real diary in the standby and the Google
+  // Sheet with test data.
+  try {
+    assertPrimaryIsNotATestDatabase();
+  } catch (error) {
+    console.error("Backup refused to run:", error);
+    const refused: BackupTarget[] = [];
+    if (sheetEnabled) refused.push("google_sheet");
+    if (databaseEnabled) refused.push("secondary_db");
+    return finish(
+      refused.map((target) => ({
+        target,
+        status: "error" as const,
+        detail:
+          "The primary database looks like a test database, so nothing was copied.",
+      })),
+      0,
+    );
   }
 
   const lockOwner = `${trigger}-${process.pid}-${crypto.randomUUID()}`;

@@ -3,6 +3,7 @@ import { login, settle } from "./helpers";
 
 const TRIP_DATE = "2026-03-15";
 const DUPLICATE_TRIP_DATE = "2026-04-20";
+const KHARCH_TRIP_DATE = "2026-05-05";
 
 test.describe("trip diary", () => {
   test.beforeEach(async ({ page }) => {
@@ -134,5 +135,51 @@ test.describe("trip diary", () => {
     await page.getByLabel("Date").fill(DUPLICATE_TRIP_DATE);
     await page.getByRole("button", { name: "Dikhao" }).click();
     await expect(page.getByText(/1 trip/)).toBeVisible();
+  });
+
+  test("saves the kharch of a trip", async ({ page }) => {
+    await page.goto("/trips/new");
+    await settle(page);
+    await page.getByLabel("Date").fill(KHARCH_TRIP_DATE);
+    await page.getByLabel("Kahan se").fill("Kharch Test");
+    await page.getByLabel("Kahan tak").fill("To");
+    await page.getByLabel("Kiraya (₹)").fill("300");
+    await page.getByLabel("Kharch (₹)").fill("75");
+    await page.getByLabel("Customer ka Naam").fill("Kharch Test");
+    await page.getByLabel("Mobile Number").fill("9876543210");
+    await page.getByRole("button", { name: "Trip Save Karein" }).click();
+    await expect(page.getByText("Trip save ho gayi!")).toBeVisible();
+
+    const response = await page.request.get(
+      `/api/trips?date=${KHARCH_TRIP_DATE}`,
+    );
+    const body = await response.json();
+    const trip = body.data.trips.find(
+      (item: { customerName: string }) => item.customerName === "Kharch Test",
+    );
+    expect(trip.kharch).toBe(75);
+  });
+
+  test("leaves the kharch at zero when the box is empty", async ({ page }) => {
+    await page.goto("/trips/new");
+    await settle(page);
+    await page.getByLabel("Date").fill(KHARCH_TRIP_DATE);
+    await page.getByLabel("Kahan se").fill("No Kharch Test");
+    await page.getByLabel("Kahan tak").fill("To");
+    await page.getByLabel("Kiraya (₹)").fill("200");
+    await page.getByLabel("Customer ka Naam").fill("No Kharch Test");
+    await page.getByLabel("Mobile Number").fill("9876543210");
+    await page.getByRole("button", { name: "Trip Save Karein" }).click();
+    await expect(page.getByText("Trip save ho gayi!")).toBeVisible();
+
+    const response = await page.request.get(
+      `/api/trips?date=${KHARCH_TRIP_DATE}`,
+    );
+    const body = await response.json();
+    const trip = body.data.trips.find(
+      (item: { customerName: string }) =>
+        item.customerName === "No Kharch Test",
+    );
+    expect(trip.kharch).toBe(0);
   });
 });

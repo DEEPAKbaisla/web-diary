@@ -7,7 +7,7 @@ import { LogoutButton } from "./logout-button";
 import { cn } from "@/lib/utils";
 
 const tabs = [
-  { href: "/trips", label: "Diary" },
+  { href: "/trips", label: "Day" },
   { href: "/trips/monthly", label: "Monthly" },
 ] as const;
 

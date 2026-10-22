@@ -12,6 +12,17 @@ function parsePositiveInt(raw: string | undefined, fallback: number): number {
 /** Documented maximum fare (whole INR). Configurable via MAX_FARE_INR. */
 export const MAX_FARE_INR = parsePositiveInt(process.env.MAX_FARE_INR, 1_000_000);
 
+/**
+ * Documented maximum kharch (whole INR). Configurable via MAX_KHARCH_INR.
+ *
+ * Kept separate from the fare cap so the two amounts can be tuned
+ * independently.
+ */
+export const MAX_KHARCH_INR = parsePositiveInt(
+  process.env.MAX_KHARCH_INR,
+  1_000_000,
+);
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -147,6 +158,16 @@ export const tripCreateSchema = z.object({
       MAX_FARE_INR,
       `Kiraya ₹${MAX_FARE_INR.toLocaleString("en-IN")} se zyada nahi ho sakta`,
     ),
+  kharch: z
+    .number()
+    .int("Kharch poore rupaye mein hona chahiye")
+    .min(0, "Kharch 0 ya usse zyada hona chahiye")
+    .max(
+      MAX_KHARCH_INR,
+      `Kharch ₹${MAX_KHARCH_INR.toLocaleString("en-IN")} se zyada nahi ho sakta`,
+    )
+    // Optional: a trip without extra expenses is stored as zero.
+    .default(0),
   customerName: customerNameSchema,
   customerPhone: indianMobileSchema,
 });

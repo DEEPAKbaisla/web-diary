@@ -83,6 +83,8 @@ model trip {
   toLocation    String   @db.VarChar(200)
   /// Fare in whole Indian Rupees. Non-negative integer.
   fare          Int
+  /// Extra expenses (kharch) in whole Indian Rupees. Non-negative integer.
+  kharch        Int      @default(0)
   customerName  String   @db.VarChar(120)
   customerPhone String   @db.VarChar(15)
   createdAt     DateTime @default(now())

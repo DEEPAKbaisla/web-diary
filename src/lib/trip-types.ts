@@ -10,6 +10,7 @@ export type TripDto = {
   fromLocation: string;
   toLocation: string;
   fare: number;
+  kharch: number;
   customerName: string;
   customerPhone: string;
   createdAt: string;
@@ -36,5 +37,11 @@ export type MonthlyResponse = {
   period: string;
   count: number;
   totalFare: number;
+  /**
+   * The month's extra expenses, in whole rupees.
+   *
+   * The bachat shown in the monthly report is `totalFare - totalKharch`.
+   */
+  totalKharch: number;
   days: TripDayGroup[];
 };

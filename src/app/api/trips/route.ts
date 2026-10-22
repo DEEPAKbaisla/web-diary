@@ -38,6 +38,7 @@ type TripRow = {
   fromLocation: string;
   toLocation: string;
   fare: number;
+  kharch: number;
   customerName: string;
   customerPhone: string;
   createdAt: Date;
@@ -50,6 +51,7 @@ function toTripDto(trip: TripRow) {
     fromLocation: trip.fromLocation,
     toLocation: trip.toLocation,
     fare: trip.fare,
+    kharch: trip.kharch,
     customerName: trip.customerName,
     customerPhone: trip.customerPhone,
     createdAt: trip.createdAt.toISOString(),
@@ -119,8 +121,35 @@ async function buildMonthlyReport(userId: string, month: string) {
     period: month,
     count: trips.length,
     totalFare: trips.reduce((sum, trip) => sum + trip.fare, 0),
+    totalKharch: trips.reduce((sum, trip) => sum + trip.kharch, 0),
     days,
   };
+}
+
+/**
+ * Schedules the background backup after a trip is saved.
+ *
+ * The trip is already stored by the time this runs, so the driver must never
+ * be told the save failed just because the background task could not be
+ * scheduled. If scheduling does fail, the trip is still saved and the
+ * scheduled backup picks it up on its next run.
+ */
+function scheduleBackupAfterTripSave() {
+  try {
+    // Copy the diary to the backup targets in the background. The response is
+    // already on its way to the driver, so the save stays instant, and the
+    // standby database and the Google Sheet are never more than a few seconds
+    // behind a new trip. When no backup target is configured this is a no-op.
+    after(async () => {
+      try {
+        await runBackupSync({ trigger: "trip-save" });
+      } catch (error) {
+        console.error("Backup after trip save failed:", error);
+      }
+    });
+  } catch (error) {
+    console.error("Could not schedule the backup after trip save:", error);
+  }
 }
 
 async function enforceTripRateLimit(userId: string, ip: string) {
@@ -239,22 +268,13 @@ export async function POST(request: Request) {
         fromLocation: parsed.data.fromLocation,
         toLocation: parsed.data.toLocation,
         fare: parsed.data.fare,
+        kharch: parsed.data.kharch,
         customerName: parsed.data.customerName,
         customerPhone: parsed.data.customerPhone,
       },
     });
 
-    // Copy the diary to the backup targets in the background. The response is
-    // already on its way to the driver, so the save stays instant, and the
-    // standby database and the Google Sheet are never more than a few seconds
-    // behind a new trip. When no backup target is configured this is a no-op.
-    after(async () => {
-      try {
-        await runBackupSync({ trigger: "trip-save" });
-      } catch (error) {
-        console.error("Backup after trip save failed:", error);
-      }
-    });
+    scheduleBackupAfterTripSave();
 
     return successResponse(toTripDto(created), 201);
   } catch (error) {

@@ -162,6 +162,8 @@ describe("GET /api/trips - results", () => {
     expect(body.data.count).toBe(2);
     expect(body.data.totalFare).toBe(350);
     expect(body.data.trips).toHaveLength(2);
+    // The day view is untouched by the kharch work.
+    expect(body.data.totalKharch).toBeUndefined();
     // Newest first.
     expect(body.data.trips[0].id).toBe("trip-2");
     expect(body.data.trips[1].id).toBe("trip-1");
@@ -222,9 +224,35 @@ describe("POST /api/trips - validation", () => {
     expect(body.data.customerPhone).toBe("9876543210");
     expect(body.data.tripDate).toBe("2026-10-20");
     expect(body.data.fare).toBe(250);
+    // A trip without a kharch is stored as zero.
+    expect(body.data.kharch).toBe(0);
 
     const stored = await prisma.trip.findFirst();
     expect(stored?.userId).toBe(TEST_USER_ID);
+  });
+
+  it("stores the kharch when one is given", async () => {
+    const response = await POST(postRequest({ ...validTrip, kharch: 60 }));
+
+    expect(response.status).toBe(201);
+    const body = await response.json();
+    expect(body.data.kharch).toBe(60);
+
+    const stored = await prisma.trip.findFirst();
+    expect(stored?.kharch).toBe(60);
+  });
+
+  it("rejects a negative kharch", async () => {
+    const response = await POST(postRequest({ ...validTrip, kharch: -1 }));
+
+    expect(response.status).toBe(422);
+    expect(await prisma.trip.count()).toBe(0);
+  });
+
+  it("rejects a fractional kharch", async () => {
+    const response = await POST(postRequest({ ...validTrip, kharch: 12.5 }));
+
+    expect(response.status).toBe(422);
   });
 
   it("rejects missing required fields", async () => {

@@ -70,6 +70,8 @@ export type TripRecord = {
   toLocation: string;
   /** Whole rupees, as text. */
   fare: string;
+  /** Whole rupees, as text. Extra expenses. */
+  kharch: string;
   customerName: string;
   customerPhone: string;
   /** `YYYY-MM-DDTHH:MM:SS.mmmZ` */

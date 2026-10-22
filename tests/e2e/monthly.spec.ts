@@ -20,6 +20,7 @@ async function createTrip(
     fromLocation: string;
     toLocation: string;
     fare: number;
+    kharch?: number;
     customerName: string;
     customerPhone: string;
   },
@@ -179,5 +180,42 @@ test.describe("monthly report", () => {
     await expect(
       page.getByRole("heading", { name: "Mahine ka Hisaab" }),
     ).toBeVisible();
+  });
+
+  test("shows the kharch of a trip and the bachat of the month", async ({
+    page,
+  }) => {
+    const month = currentMonth();
+
+    await createTrip(page, {
+      tripDate: dayOf(month, 20),
+      fromLocation: "Kharch Test",
+      toLocation: "To",
+      fare: 400,
+      kharch: 60,
+      customerName: "Kharch Test",
+      customerPhone: "9876543210",
+    });
+
+    await page.goto("/trips/monthly");
+    await settle(page);
+
+    // The trip row carries its own extra expenses.
+    await expect(page.getByText("Kharch ₹60")).toBeVisible();
+
+    const apiBody = await (
+      await page.request.get(`/api/trips?month=${month}`)
+    ).json();
+
+    // The total kiraya line is untouched.
+    await expect(page.getByText(/Total kiraya:/)).toContainText(
+      `₹${apiBody.data.totalFare.toLocaleString("en-IN")}`,
+    );
+
+    // The bachat is the fare of the month minus the kharch of the month.
+    const bachat = apiBody.data.totalFare - apiBody.data.totalKharch;
+    await expect(page.getByText(/Bachat:/)).toContainText(
+      `₹${bachat.toLocaleString("en-IN")}`,
+    );
   });
 });

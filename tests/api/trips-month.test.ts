@@ -19,6 +19,7 @@ type Seed = {
   id: string;
   date: string;
   fare: number;
+  kharch?: number;
   createdAt: string;
 };
 
@@ -31,6 +32,7 @@ async function seedTrips(seeds: Seed[], userId = TEST_USER_ID) {
       fromLocation: "From",
       toLocation: "To",
       fare: seed.fare,
+      kharch: seed.kharch ?? 0,
       customerName: "Customer",
       customerPhone: "9876543210",
       createdAt: new Date(seed.createdAt),
@@ -150,6 +152,30 @@ describe("GET /api/trips?month= - results", () => {
     ]);
   });
 
+  it("adds up the kharch of the month", async () => {
+    await seedTrips([
+      {
+        id: "t-1",
+        date: "2026-10-10",
+        fare: 250,
+        kharch: 40,
+        createdAt: "2026-10-10T09:00:00.000Z",
+      },
+      {
+        id: "t-2",
+        date: "2026-10-12",
+        fare: 100,
+        kharch: 10,
+        createdAt: "2026-10-12T08:00:00.000Z",
+      },
+    ]);
+
+    const body = await (await GET(request("?month=2026-10"))).json();
+
+    expect(body.data.totalFare).toBe(350);
+    expect(body.data.totalKharch).toBe(50);
+  });
+
   it("excludes trips from the neighbouring months", async () => {
     await seedTrips([
       {
@@ -255,5 +281,7 @@ describe("GET /api/trips?date= - unchanged behaviour", () => {
     });
     expect(body.data.trips).toHaveLength(1);
     expect(body.data.days).toBeUndefined();
+    // The day view is untouched by the kharch work.
+    expect(body.data.totalKharch).toBeUndefined();
   });
 });

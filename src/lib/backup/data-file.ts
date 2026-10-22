@@ -23,6 +23,10 @@ export type DiaryBackupFile = {
   exportedAt: string;
   tripCount: number;
   totalFare: number;
+  /** The extra expenses of every trip, in whole rupees. */
+  totalKharch: number;
+  /** What is left of the fare after the extra expenses. */
+  bachat: number;
   /** True when the credential rows (including the password hash) were left out. */
   credentialsOmitted: boolean;
   users: UserRecord[];
@@ -47,6 +51,8 @@ export function buildBackupFile(
     exportedAt: input.exportedAt,
     tripCount: summary.tripCount,
     totalFare: summary.totalFare,
+    totalKharch: summary.totalKharch,
+    bachat: summary.bachat,
     credentialsOmitted: input.accounts.length === 0,
     users: input.users,
     accounts: input.accounts,
@@ -91,17 +97,31 @@ export function parseBackupFile(raw: unknown): DiaryBackupFile {
     }
   }
 
+  // Files written before the kharch field existed carry no value for it, so
+  // every trip is given one here.
+  const trips: TripRecord[] = file.trips.map((trip) => ({
+    ...trip,
+    kharch: typeof trip.kharch === "string" ? trip.kharch : "0",
+  }));
+
+  const totalFare = typeof file.totalFare === "number" ? file.totalFare : 0;
+  const totalKharch =
+    typeof file.totalKharch === "number" ? file.totalKharch : 0;
+
   return {
     version: file.version,
     exportedAt: typeof file.exportedAt === "string" ? file.exportedAt : "",
     tripCount: typeof file.tripCount === "number" ? file.tripCount : file.trips.length,
-    totalFare: typeof file.totalFare === "number" ? file.totalFare : 0,
+    totalFare,
+    totalKharch,
+    bachat:
+      typeof file.bachat === "number" ? file.bachat : totalFare - totalKharch,
     credentialsOmitted:
       typeof file.credentialsOmitted === "boolean"
         ? file.credentialsOmitted
         : file.accounts.length === 0,
     users: file.users,
     accounts: file.accounts,
-    trips: file.trips,
+    trips,
   };
 }

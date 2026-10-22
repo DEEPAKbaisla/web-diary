@@ -40,6 +40,35 @@ function databaseIdentity(url: string): string {
 }
 
 /**
+ * Refuse to mirror a test database into a real backup target.
+ *
+ * The automated test suite runs against a throwaway database, but a stray
+ * environment variable can point the backup at it. Copying that would replace
+ * the owner's real diary in the standby and the Google Sheet with test data,
+ * and because the backup is incremental the damage is not obvious straight
+ * away. Refusing loudly is the only safe answer.
+ */
+export function assertPrimaryIsNotATestDatabase(): void {
+  const primary = process.env.DATABASE_URL?.trim();
+  if (!primary) return;
+
+  let name = "";
+  try {
+    const parsed = new URL(primary);
+    name = parsed.pathname.replace(/^\//, "").split("/")[0] ?? "";
+  } catch {
+    name = "";
+  }
+
+  if (/(^|_)tests?$/i.test(name)) {
+    throw new Error(
+      `DATABASE_URL points at what looks like a test database ("${name}"). ` +
+        "Refusing to mirror test data into the backup targets.",
+    );
+  }
+}
+
+/**
  * Refuse to mirror a database onto itself.
  *
  * Without this guard a copy/paste mistake in the environment file could turn
@@ -116,6 +145,13 @@ export function describeMirrorError(error: unknown): string {
     if (code === "P2002") {
       return "The standby already has a row with the same unique value but a different id. Remove that row from the standby and run the backup again.";
     }
+  }
+
+  if (
+    error instanceof Error &&
+    /column .* does not exist/i.test(error.message)
+  ) {
+    return "The standby database is missing a column the app needs. Run npm run db:migrate:deploy:secondary and then the backup again.";
   }
 
   if (error instanceof Error) {
@@ -222,14 +258,16 @@ async function upsertTrips(
         ${row.customerName}::text,
         ${row.customerPhone}::text,
         ${isoToPgTimestamp(row.createdAt)}::timestamp,
-        ${isoToPgTimestamp(row.updatedAt)}::timestamp
+        ${isoToPgTimestamp(row.updatedAt)}::timestamp,
+        ${row.kharch ?? "0"}::integer
       )`),
     );
 
     await secondary.$executeRaw(Prisma.sql`
       INSERT INTO "trip" (
         "id", "userId", "tripDate", "fromLocation", "toLocation",
-        "fare", "customerName", "customerPhone", "createdAt", "updatedAt"
+        "fare", "customerName", "customerPhone", "createdAt", "updatedAt",
+        "kharch"
       )
       VALUES ${values}
       ON CONFLICT ("id") DO UPDATE SET
@@ -241,7 +279,8 @@ async function upsertTrips(
         "customerName" = EXCLUDED."customerName",
         "customerPhone" = EXCLUDED."customerPhone",
         "createdAt" = EXCLUDED."createdAt",
-        "updatedAt" = EXCLUDED."updatedAt"
+        "updatedAt" = EXCLUDED."updatedAt",
+        "kharch" = EXCLUDED."kharch"
     `);
   }
   return trips.length;

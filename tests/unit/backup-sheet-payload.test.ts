@@ -28,6 +28,7 @@ const trips: TripRecord[] = [
     fromLocation: "Connaught Place",
     toLocation: "India Gate",
     fare: "250",
+    kharch: "50",
     customerName: "Ramesh Kumar",
     customerPhone: "9876543210",
     createdAt: "2026-10-20T05:30:00.000Z",
@@ -40,6 +41,7 @@ const trips: TripRecord[] = [
     fromLocation: "Karol Bagh",
     toLocation: "Punjabi Bagh",
     fare: "120",
+    kharch: "20",
     customerName: "Sita Devi",
     customerPhone: "9123456789",
     createdAt: "2026-10-20T09:05:00.000Z",
@@ -52,6 +54,7 @@ const trips: TripRecord[] = [
     fromLocation: "Airport",
     toLocation: "Noida Sector 18",
     fare: "900",
+    kharch: "0",
     customerName: "Amit, Verma",
     customerPhone: "9000000001",
     createdAt: "2026-11-02T02:15:00.000Z",
@@ -66,6 +69,12 @@ describe("summarizeTrips", () => {
     expect(summary.totalFare).toBe(1270);
   });
 
+  it("adds up the kharch and works out the bachat", () => {
+    const summary = summarizeTrips(trips);
+    expect(summary.totalKharch).toBe(70);
+    expect(summary.bachat).toBe(1200);
+  });
+
   it("groups by day, oldest first", () => {
     const summary = summarizeTrips(trips);
     expect(summary.daily).toEqual([
@@ -77,8 +86,20 @@ describe("summarizeTrips", () => {
   it("groups by month, oldest first", () => {
     const summary = summarizeTrips(trips);
     expect(summary.monthly).toEqual([
-      { month: "2026-10", trips: 2, totalFare: 370 },
-      { month: "2026-11", trips: 1, totalFare: 900 },
+      {
+        month: "2026-10",
+        trips: 2,
+        totalFare: 370,
+        totalKharch: 70,
+        bachat: 300,
+      },
+      {
+        month: "2026-11",
+        trips: 1,
+        totalFare: 900,
+        totalKharch: 0,
+        bachat: 900,
+      },
     ]);
   });
 
@@ -86,8 +107,18 @@ describe("summarizeTrips", () => {
     const summary = summarizeTrips([]);
     expect(summary.tripCount).toBe(0);
     expect(summary.totalFare).toBe(0);
+    expect(summary.totalKharch).toBe(0);
+    expect(summary.bachat).toBe(0);
     expect(summary.daily).toEqual([]);
     expect(summary.monthly).toEqual([]);
+  });
+
+  it("treats a trip without a kharch as zero", () => {
+    const summary = summarizeTrips([
+      { ...trips[0], kharch: undefined as unknown as string },
+    ]);
+    expect(summary.totalKharch).toBe(0);
+    expect(summary.bachat).toBe(250);
   });
 });
 
@@ -104,6 +135,7 @@ describe("buildTripRows", () => {
       "customerPhone",
       "createdAt",
       "updatedAt",
+      "kharch",
     ]);
     expect(rows).toHaveLength(trips.length + 1);
   });
@@ -112,6 +144,13 @@ describe("buildTripRows", () => {
     const rows = buildTripRows(trips);
     expect(rows[1][4]).toBe(250);
     expect(rows[3][4]).toBe(900);
+  });
+
+  it("keeps the kharch as a number so the sheet can sum it", () => {
+    const rows = buildTripRows(trips);
+    expect(rows[1][9]).toBe(50);
+    expect(rows[2][9]).toBe(20);
+    expect(rows[3][9]).toBe(0);
   });
 
   it("keeps every other value as it was read", () => {
@@ -131,9 +170,9 @@ describe("buildDailySummaryRows and buildMonthlySummaryRows", () => {
       ["2026-11-02", 1, 900],
     ]);
     expect(buildMonthlySummaryRows(summary)).toEqual([
-      ["month", "trips", "totalFare"],
-      ["2026-10", 2, 370],
-      ["2026-11", 1, 900],
+      ["month", "trips", "totalFare", "totalKharch", "bachat"],
+      ["2026-10", 2, 370, 70, 300],
+      ["2026-11", 1, 900, 0, 900],
     ]);
   });
 });
@@ -151,6 +190,8 @@ describe("buildMetaRows", () => {
     expect(rows).toContainEqual(["Last sync (UTC)", "2026-11-02T06:00:00.000Z"]);
     expect(rows).toContainEqual(["Trips", 3]);
     expect(rows).toContainEqual(["Total fare", 1270]);
+    expect(rows).toContainEqual(["Total kharch", 70]);
+    expect(rows).toContainEqual(["Total bachat", 1200]);
     expect(rows).toContainEqual(["Database sync", "error"]);
     expect(rows).toContainEqual([
       "Database sync error",
@@ -214,7 +255,7 @@ describe("tripsToCsv", () => {
     const lines = csv.trimEnd().split("\r\n");
     expect(lines).toHaveLength(trips.length + 1);
     expect(lines[0]).toBe(
-      "id,tripDate,fromLocation,toLocation,fare,customerName,customerPhone,createdAt,updatedAt",
+      "id,tripDate,fromLocation,toLocation,fare,customerName,customerPhone,createdAt,updatedAt,kharch",
     );
   });
 
@@ -262,6 +303,8 @@ describe("backup file", () => {
     expect(file.version).toBe(DATA_FILE_VERSION);
     expect(file.tripCount).toBe(3);
     expect(file.totalFare).toBe(1270);
+    expect(file.totalKharch).toBe(70);
+    expect(file.bachat).toBe(1200);
     expect(file.credentialsOmitted).toBe(false);
   });
 
@@ -270,6 +313,24 @@ describe("backup file", () => {
     expect(parsed.trips).toHaveLength(3);
     expect(parsed.users[0].email).toBe("owner@example.com");
     expect(parsed.accounts[0].password).toBe("$argon2id$hash");
+  });
+
+  it("gives a file written before the kharch field a zero kharch", () => {
+    const old = JSON.parse(JSON.stringify(file)) as {
+      trips: Array<Record<string, unknown>>;
+      totalKharch?: number;
+      bachat?: number;
+    };
+    for (const trip of old.trips) {
+      delete trip.kharch;
+    }
+    delete old.totalKharch;
+    delete old.bachat;
+
+    const parsed = parseBackupFile(old);
+    expect(parsed.trips.every((trip) => trip.kharch === "0")).toBe(true);
+    expect(parsed.totalKharch).toBe(0);
+    expect(parsed.bachat).toBe(parsed.totalFare);
   });
 
   it("flags a file that left the credentials out", () => {

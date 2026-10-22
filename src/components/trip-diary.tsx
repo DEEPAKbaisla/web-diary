@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useState } from "react";
 import { TripDateFilter } from "./trip-date-filter";
 import { TripList } from "./trip-list";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -26,7 +26,6 @@ export function TripDiary({
   const [data, setData] = useState<TripResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const initialDate = useRef(date);
 
   const search = useCallback(async (selectedDate: string) => {
     setLoading(true);
@@ -53,9 +52,6 @@ export function TripDiary({
     }
   }, []);
 
-  useEffect(() => {
-    void search(initialDate.current);
-  }, [search]);
 
   return (
     <div className="flex flex-col gap-4">

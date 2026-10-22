@@ -3,6 +3,7 @@ import {
   isValidDateOnly,
   loginSchema,
   MAX_FARE_INR,
+  MAX_KHARCH_INR,
   normalizeIndianMobile,
   toDateOnly,
   tripCreateSchema,
@@ -163,6 +164,45 @@ describe("tripCreateSchema", () => {
     expect(
       tripCreateSchema.safeParse({ ...validTrip, customerPhone: "" }).success,
     ).toBe(false);
+  });
+
+  it("defaults the kharch to zero when it is not given", () => {
+    const result = tripCreateSchema.safeParse(validTrip);
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.kharch).toBe(0);
+    }
+  });
+
+  it("accepts a kharch", () => {
+    const result = tripCreateSchema.safeParse({ ...validTrip, kharch: 75 });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.kharch).toBe(75);
+    }
+  });
+
+  it("rejects a negative kharch", () => {
+    expect(
+      tripCreateSchema.safeParse({ ...validTrip, kharch: -1 }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a fractional kharch", () => {
+    expect(
+      tripCreateSchema.safeParse({ ...validTrip, kharch: 12.5 }).success,
+    ).toBe(false);
+  });
+
+  it("rejects a kharch above the documented maximum", () => {
+    expect(
+      tripCreateSchema.safeParse({ ...validTrip, kharch: MAX_KHARCH_INR + 1 })
+        .success,
+    ).toBe(false);
+    expect(
+      tripCreateSchema.safeParse({ ...validTrip, kharch: MAX_KHARCH_INR })
+        .success,
+    ).toBe(true);
   });
 
   it("rejects oversized text fields", () => {

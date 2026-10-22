@@ -35,6 +35,7 @@ export async function readTrips(): Promise<TripRecord[]> {
       "fromLocation",
       "toLocation",
       "fare"::text                                           AS "fare",
+      "kharch"::text                                         AS "kharch",
       "customerName",
       "customerPhone",
       to_char("createdAt", 'YYYY-MM-DD"T"HH24:MI:SS.MS"Z"')  AS "createdAt",

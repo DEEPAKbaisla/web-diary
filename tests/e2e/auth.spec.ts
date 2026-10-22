@@ -74,10 +74,50 @@ test.describe("authentication", () => {
 
     await page.getByRole("button", { name: "Logout" }).click();
     await expect(page).toHaveURL(/\/login/);
+    // The login form comes back once the owner has signed out.
+    await expect(page.getByRole("button", { name: "Login" })).toBeVisible();
 
     await page.goto("/trips");
     await settle(page);
     await expect(page).toHaveURL(/\/login/);
+  });
+
+  test("never shows the login page to a signed-in owner", async ({ page }) => {
+    await login(page);
+
+    await page.goto("/login");
+    await settle(page);
+
+    await expect(page).toHaveURL(/\/trips/);
+    // Count, not visibility: a flash of the form would still fail this.
+    await expect(page.getByRole("button", { name: "Login" })).toHaveCount(0);
+  });
+
+  test("never shows the login page when going back in history", async ({
+    page,
+  }) => {
+    await login(page);
+
+    // The login page is behind us in the browser history. Whether the router
+    // re-fetches it or restores a cached copy, the owner must never be shown
+    // the login form.
+    await page.goBack();
+    await settle(page);
+
+    await expect(page).not.toHaveURL(/\/login/);
+    await expect(page.getByRole("button", { name: "Login" })).toHaveCount(0);
+  });
+
+  test("sends a signed-in owner from the root page to the diary", async ({
+    page,
+  }) => {
+    await login(page);
+
+    await page.goto("/");
+    await settle(page);
+
+    await expect(page).toHaveURL(/\/trips/);
+    await expect(page.getByRole("button", { name: "Login" })).toHaveCount(0);
   });
 
   test("never exposes the customer phone number before signing in", async ({

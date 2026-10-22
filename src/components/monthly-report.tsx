@@ -173,7 +173,7 @@ export function MonthlyReport() {
                 <ul className="flex flex-col gap-3">
                   {day.trips.map((trip) => (
                     <li key={trip.id}>
-                      <TripEntry trip={trip} />
+                      <TripEntry trip={trip} showKharch />
                     </li>
                   ))}
                 </ul>
@@ -187,6 +187,10 @@ export function MonthlyReport() {
 }
 
 function MonthlySummary({ data }: { data: MonthlyResponse }) {
+  // The bachat is what is left of the fare once the extra expenses are taken
+  // out. It is only worth showing when there actually were extra expenses.
+  const bachat = data.totalFare - data.totalKharch;
+
   return (
     <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1 rounded-xl border border-border bg-muted/50 px-4 py-3">
       <p className="text-sm">
@@ -195,9 +199,23 @@ function MonthlySummary({ data }: { data: MonthlyResponse }) {
         </span>{" "}
         {data.count === 1 ? "trip" : "trips"}
       </p>
-      <p className="font-heading text-base font-semibold tabular-nums">
-        Total kiraya: {formatCurrency(data.totalFare)}
-      </p>
+      <div className="flex flex-col items-end gap-0.5">
+        <p className="font-heading text-base font-semibold tabular-nums">
+          Total kiraya: {formatCurrency(data.totalFare)}
+        </p>
+        {data.totalKharch > 0 ? (
+          <p
+            className={cn(
+              "font-heading text-sm font-semibold tabular-nums",
+              bachat < 0
+                ? "text-destructive"
+                : "text-emerald-700 dark:text-emerald-400",
+            )}
+          >
+            Bachat: {formatCurrency(bachat)}
+          </p>
+        ) : null}
+      </div>
     </div>
   );
 }
