@@ -86,7 +86,8 @@ model trip {
   /// Extra expenses (kharch) in whole Indian Rupees. Non-negative integer.
   kharch        Int      @default(0)
   customerName  String   @db.VarChar(120)
-  customerPhone String   @db.VarChar(15)
+  /// Up to five normalised 10-digit numbers, joined by commas.
+  customerPhone String   @db.VarChar(200)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 

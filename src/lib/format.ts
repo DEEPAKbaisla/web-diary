@@ -25,3 +25,16 @@ export function formatTime(iso: string): string {
     hour12: false,
   });
 }
+
+/**
+ * The phone numbers stored on one trip, in the order they were typed.
+ *
+ * A trip may record up to five numbers; they are stored normalised and joined
+ * by commas, so this is the display-side split of that single column.
+ */
+export function storedPhoneNumbers(value: string): string[] {
+  return value
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+}

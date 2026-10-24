@@ -27,6 +27,23 @@ export const MAX_KHARCH_INR = parsePositiveInt(
 // Helpers
 // ---------------------------------------------------------------------------
 
+/**
+ * How many phone numbers a single trip may record.
+ *
+ * A trip usually has one rider, but shared rides and return legs happen, so
+ * the field accepts up to five numbers instead of one.
+ */
+export const MAX_TRIP_PHONES = 5;
+
+/**
+ * Length of the whole phone field as typed.
+ *
+ * `MAX_TRIP_PHONES` numbers of at most 15 characters plus separators fit
+ * comfortably inside this, so the cap on typed length is a guard against
+ * junk input rather than the real limit.
+ */
+const MAX_PHONE_FIELD_LENGTH = 200;
+
 /** Returns the 10-digit Indian mobile number, or null when invalid. */
 export function normalizeIndianMobile(input: string): string | null {
   const digits = input.replace(/\D/g, "");
@@ -35,6 +52,76 @@ export function normalizeIndianMobile(input: string): string | null {
   if (digits.length === 10 && /^[6-9]/.test(digits)) return digits;
   return null;
 }
+
+/**
+ * Splits a phone field into the individual numbers the driver typed.
+ *
+ * Commas, semicolons and newlines always separate numbers. A space is only a
+ * separator when the chunk around it is not already a valid number on its
+ * own — that is what keeps the space inside "98765 43210" from cutting a
+ * single number in half, while still reading "9876543210 9812345678" as two.
+ */
+export function splitPhoneNumbers(input: string): string[] {
+  return input
+    .split(/[,;\n]+/)
+    .flatMap((chunk) => {
+      const trimmed = chunk.trim();
+      if (!trimmed) return [];
+      if (normalizeIndianMobile(trimmed)) return [trimmed];
+      return trimmed.split(/\s+/).filter(Boolean);
+    })
+    .filter(Boolean);
+}
+
+/**
+ * Up to five Indian mobile numbers, stored as normalised digits joined by
+ * commas, e.g. `9876543210,9812345678`.
+ *
+ * Stored in one column on purpose: the Google Sheet, the CSV export and the
+ * standby database all mirror `customerPhone` as a single cell, so keeping
+ * the multi-value string in one column leaves every backup untouched.
+ */
+export const customerPhonesSchema = z
+  .string()
+  .trim()
+  .max(
+    MAX_PHONE_FIELD_LENGTH,
+    `Mobile number bohot lamba hai (max ${MAX_PHONE_FIELD_LENGTH} characters)`,
+  )
+  .superRefine((value, ctx) => {
+    const parts = splitPhoneNumbers(value);
+
+    if (parts.length === 0) {
+      ctx.addIssue({ code: "custom", message: "Mobile number zaroori hai" });
+      return;
+    }
+
+    if (parts.length > MAX_TRIP_PHONES) {
+      ctx.addIssue({
+        code: "custom",
+        message: `Ek trip mein maximum ${MAX_TRIP_PHONES} mobile number ho sakte hain`,
+      });
+      return;
+    }
+
+    for (const part of parts) {
+      if (!normalizeIndianMobile(part)) {
+        ctx.addIssue({
+          code: "custom",
+          message: `Sahi Indian mobile number daaliye (10 digits): ${part}`,
+        });
+        return;
+      }
+    }
+  })
+  .transform((value) => {
+    const numbers = splitPhoneNumbers(value).map(
+      (part) => normalizeIndianMobile(part) as string,
+    );
+    // The same rider typed twice is still one rider.
+    return [...new Set(numbers)].join(",");
+  });
+
 
 /** True for a real calendar date in `YYYY-MM-DD` form. */
 export function isValidDateOnly(value: string): boolean {
@@ -97,21 +184,6 @@ export function formatMonthLabel(value: string): string {
 // Schemas
 // ---------------------------------------------------------------------------
 
-const indianMobileSchema = z
-  .string()
-  .trim()
-  .min(1, "Mobile number zaroori hai")
-  .max(20, "Mobile number bohot lamba hai")
-  .superRefine((value, ctx) => {
-    if (!normalizeIndianMobile(value)) {
-      ctx.addIssue({
-        code: "custom",
-        message: "Sahi Indian mobile number daaliye (10 digits)",
-      });
-    }
-  })
-  .transform((value) => normalizeIndianMobile(value) as string);
-
 const dateOnlySchema = z
   .string()
   .regex(/^\d{4}-\d{2}-\d{2}$/, "Date YYYY-MM-DD format me honi chahiye")
@@ -146,31 +218,67 @@ export const loginSchema = z.object({
     .max(128, "Password bohot lamba hai"),
 });
 
-export const tripCreateSchema = z.object({
+/** The fare and kharch amounts, as whole non-negative rupees. */
+const fareSchema = z
+  .number()
+  .int("Kiraya poore rupaye mein hona chahiye")
+  .min(0, "Kiraya 0 ya usse zyada hona chahiye")
+  .max(
+    MAX_FARE_INR,
+    `Kiraya ₹${MAX_FARE_INR.toLocaleString("en-IN")} se zyada nahi ho sakta`,
+  );
+
+const kharchSchema = z
+  .number()
+  .int("Kharch poore rupaye mein hona chahiye")
+  .min(0, "Kharch 0 ya usse zyada hona chahiye")
+  .max(
+    MAX_KHARCH_INR,
+    `Kharch ₹${MAX_KHARCH_INR.toLocaleString("en-IN")} se zyada nahi ho sakta`,
+  );
+
+/**
+ * Every trip field, with no defaults applied.
+ *
+ * Both the create and the edit schema are built from this one map so a rule
+ * can never be tightened in one place and forgotten in the other. The create
+ * schema adds the kharch default on top; the edit schema must not, or a
+ * partial update would quietly reset the kharch of trips that never sent one.
+ */
+const tripFields = {
   tripDate: dateOnlySchema,
   fromLocation: locationSchema("Kahan se"),
   toLocation: locationSchema("Kahan tak"),
-  fare: z
-    .number()
-    .int("Kiraya poore rupaye mein hona chahiye")
-    .min(0, "Kiraya 0 ya usse zyada hona chahiye")
-    .max(
-      MAX_FARE_INR,
-      `Kiraya ₹${MAX_FARE_INR.toLocaleString("en-IN")} se zyada nahi ho sakta`,
-    ),
-  kharch: z
-    .number()
-    .int("Kharch poore rupaye mein hona chahiye")
-    .min(0, "Kharch 0 ya usse zyada hona chahiye")
-    .max(
-      MAX_KHARCH_INR,
-      `Kharch ₹${MAX_KHARCH_INR.toLocaleString("en-IN")} se zyada nahi ho sakta`,
-    )
-    // Optional: a trip without extra expenses is stored as zero.
-    .default(0),
+  fare: fareSchema,
+  kharch: kharchSchema,
   customerName: customerNameSchema,
-  customerPhone: indianMobileSchema,
+  customerPhone: customerPhonesSchema,
+};
+
+export const tripCreateSchema = z.object({
+  ...tripFields,
+  // Optional: a trip without extra expenses is stored as zero.
+  kharch: kharchSchema.default(0),
 });
+
+/**
+ * A partial trip, for editing.
+ *
+ * Every field is optional so the driver can change just the fare, or just
+ * the phone numbers, but at least one field has to change: an update that
+ * touches nothing is a client bug, not an edit.
+ */
+export const tripUpdateSchema = z
+  .object(tripFields)
+  .partial()
+  .refine(
+    // Absent optional fields can surface as `undefined`, so count only the
+    // keys the driver actually filled in.
+    (value) => Object.values(value).some((field) => field !== undefined),
+    {
+      message: "Kam se kam ek field badalni chahiye",
+    },
+  );
 
 export const tripDateQuerySchema = z.object({
   date: dateOnlySchema,

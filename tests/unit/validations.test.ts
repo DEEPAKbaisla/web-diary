@@ -4,9 +4,12 @@ import {
   loginSchema,
   MAX_FARE_INR,
   MAX_KHARCH_INR,
+  MAX_TRIP_PHONES,
   normalizeIndianMobile,
+  splitPhoneNumbers,
   toDateOnly,
   tripCreateSchema,
+  tripUpdateSchema,
 } from "@/lib/validations";
 
 const validTrip = {
@@ -41,6 +44,41 @@ describe("normalizeIndianMobile", () => {
     expect(normalizeIndianMobile("987654321")).toBeNull();
     expect(normalizeIndianMobile("98765432101")).toBeNull();
     expect(normalizeIndianMobile("")).toBeNull();
+  });
+});
+
+describe("splitPhoneNumbers", () => {
+  it("keeps a single number whole even when it contains a space", () => {
+    expect(splitPhoneNumbers("98765 43210")).toEqual(["98765 43210"]);
+    expect(splitPhoneNumbers("+91 98765 43210")).toEqual(["+91 98765 43210"]);
+  });
+
+  it("splits on commas, semicolons and newlines", () => {
+    expect(splitPhoneNumbers("9876543210,9812345678")).toEqual([
+      "9876543210",
+      "9812345678",
+    ]);
+    expect(splitPhoneNumbers("9876543210; 9812345678")).toEqual([
+      "9876543210",
+      "9812345678",
+    ]);
+    expect(splitPhoneNumbers("9876543210\n9812345678")).toEqual([
+      "9876543210",
+      "9812345678",
+    ]);
+  });
+
+  it("reads two whole numbers separated by a space", () => {
+    expect(splitPhoneNumbers("9876543210 9812345678")).toEqual([
+      "9876543210",
+      "9812345678",
+    ]);
+  });
+
+  it("drops empty segments from stray separators", () => {
+    expect(splitPhoneNumbers(" , 9876543210 , ")).toEqual(["9876543210"]);
+    expect(splitPhoneNumbers("")).toEqual([]);
+    expect(splitPhoneNumbers("   ")).toEqual([]);
   });
 });
 
@@ -166,6 +204,59 @@ describe("tripCreateSchema", () => {
     ).toBe(false);
   });
 
+  it("accepts several numbers and stores them joined by commas", () => {
+    const result = tripCreateSchema.safeParse({
+      ...validTrip,
+      customerPhone: "9876543210, +91 98123 45678",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.customerPhone).toBe("9876543210,9812345678");
+    }
+  });
+
+  it("accepts the documented maximum of five numbers", () => {
+    const result = tripCreateSchema.safeParse({
+      ...validTrip,
+      customerPhone:
+        "9876543210,9812345678,9811111111,9822222222,9833333333",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.customerPhone.split(",")).toHaveLength(
+        MAX_TRIP_PHONES,
+      );
+    }
+  });
+
+  it("rejects more than five numbers", () => {
+    const result = tripCreateSchema.safeParse({
+      ...validTrip,
+      customerPhone:
+        "9876543210,9812345678,9811111111,9822222222,9833333333,9844444444",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("rejects the list as a whole when any one number is invalid", () => {
+    const result = tripCreateSchema.safeParse({
+      ...validTrip,
+      customerPhone: "9876543210, 12345",
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("stores the same number typed twice only once", () => {
+    const result = tripCreateSchema.safeParse({
+      ...validTrip,
+      customerPhone: "9876543210, +91 98765 43210",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.customerPhone).toBe("9876543210");
+    }
+  });
+
   it("defaults the kharch to zero when it is not given", () => {
     const result = tripCreateSchema.safeParse(validTrip);
     expect(result.success).toBe(true);
@@ -218,6 +309,67 @@ describe("tripCreateSchema", () => {
         customerName: "a".repeat(121),
       }).success,
     ).toBe(false);
+  });
+});
+
+describe("tripUpdateSchema", () => {
+  it("accepts a single changed field", () => {
+    const result = tripUpdateSchema.safeParse({ fare: 300 });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data).toEqual({ fare: 300 });
+    }
+  });
+
+  it("accepts every field at once", () => {
+    const result = tripUpdateSchema.safeParse(validTrip);
+    expect(result.success).toBe(true);
+  });
+
+  it("rejects an empty update", () => {
+    expect(tripUpdateSchema.safeParse({}).success).toBe(false);
+  });
+
+  it("rejects an update where every field is absent", () => {
+    expect(
+      tripUpdateSchema.safeParse({
+        fare: undefined,
+        customerPhone: undefined,
+      }).success,
+    ).toBe(false);
+  });
+
+  it("still applies the field-level rules to whatever is sent", () => {
+    expect(tripUpdateSchema.safeParse({ fare: -1 }).success).toBe(false);
+    expect(tripUpdateSchema.safeParse({ fare: 12.5 }).success).toBe(false);
+    expect(tripUpdateSchema.safeParse({ tripDate: "2026-02-30" }).success).toBe(
+      false,
+    );
+    expect(tripUpdateSchema.safeParse({ customerPhone: "12345" }).success).toBe(
+      false,
+    );
+    expect(
+      tripUpdateSchema.safeParse({ fromLocation: "   " }).success,
+    ).toBe(false);
+  });
+
+  it("normalises the phone numbers it is given", () => {
+    const result = tripUpdateSchema.safeParse({
+      customerPhone: "+91 98123 45678, 9876543210",
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.customerPhone).toBe("9812345678,9876543210");
+    }
+  });
+
+  it("does not fill kharch in when it is left out", () => {
+    const result = tripUpdateSchema.safeParse({ fare: 300 });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      // A missing kharch must not silently become zero and wipe the old one.
+      expect(result.data.kharch).toBeUndefined();
+    }
   });
 });
 

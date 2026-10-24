@@ -4,6 +4,9 @@ import { login, settle } from "./helpers";
 const TRIP_DATE = "2026-03-15";
 const DUPLICATE_TRIP_DATE = "2026-04-20";
 const KHARCH_TRIP_DATE = "2026-05-05";
+const PHONE_TRIP_DATE = "2026-06-10";
+const EDIT_TRIP_DATE = "2026-07-14";
+const CANCEL_TRIP_DATE = "2026-08-18";
 
 test.describe("trip diary", () => {
   test.beforeEach(async ({ page }) => {
@@ -181,5 +184,90 @@ test.describe("trip diary", () => {
         item.customerName === "No Kharch Test",
     );
     expect(trip.kharch).toBe(0);
+  });
+
+  test("saves several phone numbers on one trip", async ({ page }) => {
+    await page.goto("/trips/new");
+    await settle(page);
+    await page.getByLabel("Date").fill(PHONE_TRIP_DATE);
+    await page.getByLabel("Kahan se").fill("Multi Phone Test");
+    await page.getByLabel("Kahan tak").fill("To");
+    await page.getByLabel("Kiraya (₹)").fill("180");
+    await page.getByLabel("Customer ka Naam").fill("Two Riders");
+    await page
+      .getByLabel("Mobile Number")
+      .fill("9876543210, +91 98123 45678");
+    await page.getByRole("button", { name: "Trip Save Karein" }).click();
+    await expect(page.getByText("Trip save ho gayi!")).toBeVisible();
+
+    await page.goto("/trips");
+    await settle(page);
+    await page.getByLabel("Date").fill(PHONE_TRIP_DATE);
+    await page.getByRole("button", { name: "Dikhao" }).click();
+
+    // Both numbers are shown, as their own links.
+    await expect(
+      page.getByRole("link", { name: "9876543210" }),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("link", { name: "9812345678" }),
+    ).toBeVisible();
+  });
+
+  test("edits a trip in place and updates the day totals", async ({ page }) => {
+    await page.goto("/trips/new");
+    await settle(page);
+    await page.getByLabel("Date").fill(EDIT_TRIP_DATE);
+    await page.getByLabel("Kahan se").fill("Old Origin");
+    await page.getByLabel("Kahan tak").fill("Old Destination");
+    await page.getByLabel("Kiraya (₹)").fill("250");
+    await page.getByLabel("Customer ka Naam").fill("Edit Test");
+    await page.getByLabel("Mobile Number").fill("9876543210");
+    await page.getByRole("button", { name: "Trip Save Karein" }).click();
+    await expect(page.getByText("Trip save ho gayi!")).toBeVisible();
+
+    await page.goto("/trips");
+    await settle(page);
+    await page.getByLabel("Date").fill(EDIT_TRIP_DATE);
+    await page.getByRole("button", { name: "Dikhao" }).click();
+    await expect(page.getByText(/Total kiraya:/)).toContainText("₹250");
+
+    // The row becomes an editor for that same trip.
+    await page.getByRole("button", { name: "Edit" }).click();
+    await page.getByLabel("Kahan se").fill("New Origin");
+    await page.getByLabel("Kiraya (₹)").fill("400");
+    await page.getByRole("button", { name: "Badlaav Save Karein" }).click();
+
+    await expect(page.getByText("New Origin")).toBeVisible();
+    await expect(page.getByText("Old Origin")).toHaveCount(0);
+    // The editor closes and the totals follow the edit.
+    await expect(page.getByRole("button", { name: "Edit" })).toHaveCount(1);
+    await expect(page.getByText(/Total kiraya:/)).toContainText("₹400");
+  });
+
+  test("cancelling an edit leaves the trip alone", async ({ page }) => {
+    await page.goto("/trips/new");
+    await settle(page);
+    await page.getByLabel("Date").fill(CANCEL_TRIP_DATE);
+    await page.getByLabel("Kahan se").fill("Cancel Test");
+    await page.getByLabel("Kahan tak").fill("To");
+    await page.getByLabel("Kiraya (₹)").fill("120");
+    await page.getByLabel("Customer ka Naam").fill("Cancel Test");
+    await page.getByLabel("Mobile Number").fill("9876543210");
+    await page.getByRole("button", { name: "Trip Save Karein" }).click();
+    await expect(page.getByText("Trip save ho gayi!")).toBeVisible();
+
+    await page.goto("/trips");
+    await settle(page);
+    await page.getByLabel("Date").fill(CANCEL_TRIP_DATE);
+    await page.getByRole("button", { name: "Dikhao" }).click();
+
+    await page.getByRole("button", { name: "Edit" }).click();
+    await page.getByLabel("Kahan se").fill("Should Not Be Saved");
+    await page.getByRole("button", { name: "Cancel" }).click();
+
+    await expect(page.getByText("Cancel Test").first()).toBeVisible();
+    await expect(page.getByText("Should Not Be Saved")).toHaveCount(0);
+    await expect(page.getByText(/Total kiraya:/)).toContainText("₹120");
   });
 });

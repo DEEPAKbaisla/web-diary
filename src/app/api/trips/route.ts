@@ -1,68 +1,31 @@
 import { headers } from "next/headers";
-import { after } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { getClientIp } from "@/lib/client-ip";
-import { runBackupSync } from "@/lib/backup/sync";
 import {
   tripCreateSchema,
   tripsQuerySchema,
   monthStart,
   monthEndExclusive,
-  toDateOnly,
 } from "@/lib/validations";
-import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
-import { isSameOriginRequest } from "@/lib/csrf";
-import type { TripDto } from "@/lib/trip-types";
 import {
-  unauthorized,
-  forbidden,
-  validationError,
-  rateLimited,
   successResponse,
+  validationError,
   internalError,
   errorResponse,
+  forbidden,
+  unauthorized,
 } from "@/lib/errors";
+import { isSameOriginRequest } from "@/lib/csrf";
+import {
+  MAX_BODY_BYTES,
+  enforceTripRateLimit,
+  parseDateOnly,
+  scheduleBackupAfterTripChange,
+  toTripDto,
+} from "@/lib/trip-route";
 
-const MAX_BODY_BYTES = 10_000;
-
-/**
- * The background backup runs after the response has been sent, so it needs a
- * little room inside the function's time budget.
- */
-export const maxDuration = 60;
-
-type TripRow = {
-  id: string;
-  tripDate: Date;
-  fromLocation: string;
-  toLocation: string;
-  fare: number;
-  kharch: number;
-  customerName: string;
-  customerPhone: string;
-  createdAt: Date;
-};
-
-function toTripDto(trip: TripRow) {
-  return {
-    id: trip.id,
-    tripDate: toDateOnly(trip.tripDate),
-    fromLocation: trip.fromLocation,
-    toLocation: trip.toLocation,
-    fare: trip.fare,
-    kharch: trip.kharch,
-    customerName: trip.customerName,
-    customerPhone: trip.customerPhone,
-    createdAt: trip.createdAt.toISOString(),
-  };
-}
-
-/** Parse a `YYYY-MM-DD` string into a UTC-midnight Date for `@db.Date` columns. */
-function parseDateOnly(value: string): Date {
-  const [year, month, day] = value.split("-").map((part) => Number(part));
-  return new Date(Date.UTC(year, month - 1, day));
-}
+export { maxDuration } from "@/lib/trip-route";
 
 /** Every trip recorded on one day, newest first, plus that day's totals. */
 async function buildDayReport(userId: string, date: string) {
@@ -99,7 +62,7 @@ async function buildMonthlyReport(userId: string, month: string) {
     orderBy: [{ tripDate: "desc" }, { createdAt: "desc" }],
   });
 
-  const grouped = new Map<string, TripDto[]>();
+  const grouped = new Map<string, ReturnType<typeof toTripDto>[]>();
   for (const trip of trips) {
     const dto = toTripDto(trip);
     const bucket = grouped.get(dto.tripDate);
@@ -124,62 +87,6 @@ async function buildMonthlyReport(userId: string, month: string) {
     totalKharch: trips.reduce((sum, trip) => sum + trip.kharch, 0),
     days,
   };
-}
-
-/**
- * Schedules the background backup after a trip is saved.
- *
- * The trip is already stored by the time this runs, so the driver must never
- * be told the save failed just because the background task could not be
- * scheduled. If scheduling does fail, the trip is still saved and the
- * scheduled backup picks it up on its next run.
- */
-function scheduleBackupAfterTripSave() {
-  try {
-    // Copy the diary to the backup targets in the background. The response is
-    // already on its way to the driver, so the save stays instant, and the
-    // standby database and the Google Sheet are never more than a few seconds
-    // behind a new trip. When no backup target is configured this is a no-op.
-    after(async () => {
-      try {
-        await runBackupSync({ trigger: "trip-save" });
-      } catch (error) {
-        console.error("Backup after trip save failed:", error);
-      }
-    });
-  } catch (error) {
-    console.error("Could not schedule the backup after trip save:", error);
-  }
-}
-
-async function enforceTripRateLimit(userId: string, ip: string) {
-  const max =
-    Number.parseInt(process.env.TRIP_RATE_LIMIT_MAX ?? "", 10) || 120;
-  const windowSeconds =
-    Number.parseInt(process.env.TRIP_RATE_LIMIT_WINDOW_SECONDS ?? "", 10) ||
-    60;
-
-  const [userLimit, ipLimit] = await Promise.all([
-    checkRateLimit(
-      rateLimitKey({ scope: "trip-user", identifier: userId }),
-      max,
-      windowSeconds,
-    ),
-    checkRateLimit(
-      rateLimitKey({ scope: "trip-ip", identifier: ip }),
-      max,
-      windowSeconds,
-    ),
-  ]);
-
-  if (!userLimit.ok || !ipLimit.ok) {
-    const retryAfter = Math.max(
-      userLimit.ok ? 0 : userLimit.retryAfter,
-      ipLimit.ok ? 0 : ipLimit.retryAfter,
-    );
-    return rateLimited(retryAfter);
-  }
-  return null;
 }
 
 export async function GET(request: Request) {
@@ -274,7 +181,7 @@ export async function POST(request: Request) {
       },
     });
 
-    scheduleBackupAfterTripSave();
+    scheduleBackupAfterTripChange();
 
     return successResponse(toTripDto(created), 201);
   } catch (error) {

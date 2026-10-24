@@ -1,4 +1,4 @@
-import { formatCurrency, formatTime } from "@/lib/format";
+import { formatCurrency, formatTime, storedPhoneNumbers } from "@/lib/format";
 import type { TripDto } from "@/lib/trip-types";
 
 /**
@@ -9,6 +9,7 @@ import type { TripDto } from "@/lib/trip-types";
 export function TripEntry({
   trip,
   showKharch = false,
+  onEdit,
 }: {
   trip: TripDto;
   /**
@@ -18,7 +19,15 @@ export function TripEntry({
    * has always been.
    */
   showKharch?: boolean;
+  /**
+   * Offer an edit button on the row.
+   *
+   * Only the day diary wires this up; the monthly report stays read-only.
+   */
+  onEdit?: () => void;
 }) {
+  const phones = storedPhoneNumbers(trip.customerPhone);
+
   return (
     <div className="flex overflow-hidden rounded-xl border border-border bg-card shadow-diary">
       <div className="flex w-[4.25rem] shrink-0 flex-col items-center justify-center gap-1 border-r border-border/70 bg-muted/50 px-2 py-4">
@@ -51,8 +60,28 @@ export function TripEntry({
 
         <div className="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-muted-foreground">
           <span className="text-foreground/80">{trip.customerName}</span>
-          <span className="font-mono tabular-nums">{trip.customerPhone}</span>
+          {phones.map((phone) => (
+            <a
+              key={phone}
+              href={`tel:+91${phone}`}
+              className="font-mono tabular-nums underline-offset-4 transition-colors hover:text-foreground hover:underline"
+            >
+              {phone}
+            </a>
+          ))}
         </div>
+
+        {onEdit ? (
+          <div className="mt-3 flex justify-end">
+            <button
+              type="button"
+              onClick={onEdit}
+              className="rounded-lg border border-border px-2.5 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            >
+              Edit
+            </button>
+          </div>
+        ) : null}
       </div>
     </div>
   );

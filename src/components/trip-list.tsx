@@ -1,8 +1,23 @@
 import { TripEntry } from "./trip-entry";
+import { TripEditForm } from "./trip-edit-form";
 import { formatCurrency, formatDay } from "@/lib/format";
-import type { TripResponse } from "@/lib/trip-types";
+import type { TripDto, TripResponse } from "@/lib/trip-types";
 
-export function TripList({ data }: { data: TripResponse }) {
+export function TripList({
+  data,
+  editingId,
+  onEdit,
+  onCancelEdit,
+  onSaved,
+}: {
+  data: TripResponse;
+  /** The trip whose row is currently an open editor, if any. */
+  editingId: string | null;
+  onEdit: (id: string) => void;
+  onCancelEdit: () => void;
+  /** Called with the trip as the server now has it. */
+  onSaved: (trip: TripDto) => void;
+}) {
   if (data.trips.length === 0) {
     return (
       <p className="rounded-xl border border-dashed border-border bg-card/60 px-4 py-12 text-center text-sm text-muted-foreground">
@@ -31,7 +46,15 @@ export function TripList({ data }: { data: TripResponse }) {
       <ul className="flex flex-col gap-3">
         {data.trips.map((trip) => (
           <li key={trip.id}>
-            <TripEntry trip={trip} />
+            {editingId === trip.id ? (
+              <TripEditForm
+                trip={trip}
+                onSaved={onSaved}
+                onCancel={onCancelEdit}
+              />
+            ) : (
+              <TripEntry trip={trip} onEdit={() => onEdit(trip.id)} />
+            )}
           </li>
         ))}
       </ul>

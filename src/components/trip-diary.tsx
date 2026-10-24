@@ -5,7 +5,7 @@ import { TripDateFilter } from "./trip-date-filter";
 import { TripList } from "./trip-list";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-import type { TripResponse } from "@/lib/trip-types";
+import type { TripDto, TripResponse } from "@/lib/trip-types";
 
 function todayIso(): string {
   const now = new Date();
@@ -26,10 +26,14 @@ export function TripDiary({
   const [data, setData] = useState<TripResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** The trip whose row is an open editor, or null when none is. */
+  const [editingId, setEditingId] = useState<string | null>(null);
 
   const search = useCallback(async (selectedDate: string) => {
     setLoading(true);
     setError(null);
+    // A new day replaces the list, so an open editor has nothing left to edit.
+    setEditingId(null);
     try {
       const response = await fetch(
         `/api/trips?date=${encodeURIComponent(selectedDate)}`,
@@ -52,6 +56,33 @@ export function TripDiary({
     }
   }, []);
 
+  /**
+   * Folds a saved edit back into the day on screen.
+   *
+   * An edit can move a trip to another day, in which case it is no longer
+   * part of this list and simply drops out — the driver moves on to the next
+   * entry rather than chasing a row that has changed its date.
+   */
+  const applyEdit = useCallback((updated: TripDto) => {
+    setEditingId(null);
+    setData((prev) => {
+      if (!prev) return prev;
+
+      const trips =
+        updated.tripDate === prev.date
+          ? prev.trips.map((trip) =>
+              trip.id === updated.id ? updated : trip,
+            )
+          : prev.trips.filter((trip) => trip.id !== updated.id);
+
+      return {
+        ...prev,
+        trips,
+        count: trips.length,
+        totalFare: trips.reduce((sum, trip) => sum + trip.fare, 0),
+      };
+    });
+  }, []);
 
   return (
     <div className="flex flex-col gap-4">
@@ -79,7 +110,15 @@ export function TripDiary({
         )}
       >
         {loading && !data ? <DiarySkeleton /> : null}
-        {data ? <TripList data={data} /> : null}
+        {data ? (
+          <TripList
+            data={data}
+            editingId={editingId}
+            onEdit={setEditingId}
+            onCancelEdit={() => setEditingId(null)}
+            onSaved={applyEdit}
+          />
+        ) : null}
       </div>
     </div>
   );

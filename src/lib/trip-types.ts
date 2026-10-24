@@ -12,6 +12,10 @@ export type TripDto = {
   fare: number;
   kharch: number;
   customerName: string;
+  /**
+   * The customer's phone numbers, normalised to 10 digits and joined by
+   * commas. A trip may record up to five, so this is not a single number.
+   */
   customerPhone: string;
   createdAt: string;
 };

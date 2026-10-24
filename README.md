@@ -121,7 +121,7 @@ rateLimitBucket              (fixed-window rate limit counters)
 | `fare` | `INTEGER` | whole rupees, non-negative, capped by `MAX_FARE_INR` |
 | `kharch` | `INTEGER` | whole rupees, non-negative, defaults to `0`, capped by `MAX_KHARCH_INR` |
 | `customerName` | `VARCHAR(120)` | |
-| `customerPhone` | `VARCHAR(15)` | stored as a normalised 10-digit number |
+| `customerPhone` | `VARCHAR(200)` | up to 5 normalised 10-digit numbers, joined by commas |
 | `createdAt` / `updatedAt` | `TIMESTAMP(3)` | |
 
 The `user` / `session` / `account` / `verification` models are Better Auth's
@@ -227,6 +227,8 @@ What is covered:
 | Area | Where |
 | --- | --- |
 | Valid/invalid trip creation, invalid dates, fares, kharch, phones, missing and oversized fields | `tests/unit/validations.test.ts`, `tests/api/trips.test.ts` |
+| Editing a trip: full and partial updates, ownership, empty updates, CSRF, rate limiting | `tests/api/trips-id.test.ts` |
+| Several phone numbers per trip (cap of five, de-duplication, one bad number rejects the list) | `tests/unit/validations.test.ts`, `tests/api/trips-id.test.ts` |
 | Unauthenticated API requests and direct page access | `tests/api/trips.test.ts`, `tests/e2e/auth.spec.ts` |
 | Date-wise retrieval, trip count and total fare, newest-first ordering | `tests/api/trips.test.ts`, `tests/e2e/trips.spec.ts` |
 | Monthly report: per-day grouping, total fare, total kharch and the bachat | `tests/api/trips-month.test.ts`, `tests/e2e/monthly.spec.ts` |
@@ -314,8 +316,8 @@ Security is applied in layers; no single control is relied upon.
   customer data are never returned to the client; details are logged
   server-side only. Passwords, session tokens and full phone numbers are never
   logged.
-* `POST` requests are rejected when the `Origin` header does not match the
-  `Host` header (defence in depth on top of `SameSite=Strict`).
+* `POST` and `PATCH` requests are rejected when the `Origin` header does not
+  match the `Host` header (defence in depth on top of `SameSite=Strict`).
 
 ### Response headers
 
@@ -343,6 +345,7 @@ The limiter is a PostgreSQL fixed-window counter
 | --- | --- | --- |
 | Sign-in (`/sign-in/email`, used by the login form) | per **IP** and per **account identifier** | 10 / 60 s |
 | `POST /api/trips` | per **user id** and per **IP** | 120 / 60 s |
+| `PATCH /api/trips/[id]` | per **user id** and per **IP** | 120 / 60 s |
 | `GET /api/trips` | per **user id** and per **IP** | 120 / 60 s |
 
 The sign-in limiter is implemented as a Better Auth `before` hook, so it also
@@ -514,14 +517,18 @@ src/
     api/
       auth/[...all]/route.ts Better Auth handler
       trips/route.ts         POST create, GET list + summary
+      trips/[id]/route.ts    PATCH edit an existing trip
       cron/backup/route.ts   Scheduled backup trigger (bearer token)
     layout.tsx, globals.css
   components/
     login-form.tsx
-    trip-form.tsx
+    trip-form.tsx           new-trip form
+    trip-fields.tsx         the seven trip inputs, shared by create + edit
+    trip-edit-form.tsx      inline editor for one diary row
     trip-diary.tsx
     trip-date-filter.tsx
     trip-list.tsx
+    trip-entry.tsx
     app-header.tsx
     logout-button.tsx
     ui/                      shadcn/ui components
@@ -531,6 +538,7 @@ src/
     prisma.ts                Prisma client (driver adapter, singleton)
     password.ts              Argon2id hashing
     validations.ts           Zod schemas (shared by client and server)
+    trip-route.ts            Helpers shared by the trip route handlers
     rate-limit.ts            PostgreSQL-backed limiter
     csrf.ts                  Same-origin check
     client-ip.ts             Client IP extraction
