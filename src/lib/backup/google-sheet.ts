@@ -3,13 +3,14 @@ import type { SheetPayload } from "./sheet-payload";
 /**
  * Pushes a sheet payload to the Google Sheet.
  *
- * The Sheet is written through an Apps Script web app: the script is bound to
- * the spreadsheet, checks a shared secret, and writes the tabs with
- * `setValues`. That keeps the Google side dependency-free (no service account
- * key to manage, no `googleapis` package in the bundle) and lets the Sheet
- * stay an ordinary spreadsheet the owner can open and read.
+ * The Sheet is written through an Apps Script web app that checks a shared
+ * secret and writes each tab with `setValues`. That keeps the Google side
+ * dependency-free (no service account key to manage, no `googleapis` package
+ * in the bundle) and lets the Sheet stay an ordinary spreadsheet the owner
+ * can open and read.
  *
- * The token travels in the `X-Backup-Token` header and is never logged.
+ * Apps Script web apps cannot read custom request headers, so the token
+ * travels in the JSON body as `token`. It is never logged.
  */
 
 /** Give up on a slow Apps Script rather than holding the caller hostage. */
@@ -27,6 +28,14 @@ export type PushSheetResult = {
   rows: number;
   /** The spreadsheet the script actually wrote to. */
   spreadsheetId: string;
+};
+
+/** The JSON shape our Apps Script (Code.gs) answers with. */
+type ScriptResponse = {
+  ok?: boolean;
+  error?: string;
+  rows?: number;
+  spreadsheetId?: string;
 };
 
 /**
@@ -49,13 +58,12 @@ export async function pushToGoogleSheet(
   try {
     response = await fetch(url, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Backup-Token": token,
-      },
-      body: JSON.stringify(payload),
+      // text/plain avoids a CORS-style preflight that Apps Script can't answer.
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      // Token goes in the body: Apps Script cannot see request headers.
+      body: JSON.stringify({ token, ...payload }),
       signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS),
-      // The Apps Script endpoint is a plain web app, never a browser session.
+      // Apps Script answers with a redirect before the real response.
       redirect: "follow",
     });
   } catch (error) {
@@ -77,32 +85,37 @@ export async function pushToGoogleSheet(
     );
   }
 
-  let parsed: { ok?: boolean; rows?: number; spreadsheetId?: string };
+  // Apps Script returns HTTP 200 even for errors, so the body decides.
+  let parsed: ScriptResponse;
   try {
-    parsed = JSON.parse(body) as typeof parsed;
+    parsed = JSON.parse(body) as ScriptResponse;
   } catch {
-    // A 2xx with an unreadable body still means the request was accepted.
-    return { rows: 0, spreadsheetId: "" };
+    // Usually Google's HTML error page: wrong, stale or undeployed script URL.
+    const text = body.replace(/<script[\s\S]*?<\/script>/gi, "").replace(/<style[\s\S]*?<\/style>/gi, "").replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+
+  // console.log("HTTP status:", response.status, "final url:", response.url);
+  // console.log("Readable text:", text.slice(0, 400));
+  
+  throw new Error("Google Sheet backup returned an unreadable response (wrong or stale script URL?).");
+
   }
 
-  if (parsed.ok === false) {
+  // Only a clear { ok: true } counts as success.
+  if (parsed.ok !== true) {
     throw new Error(
-      typeof parsed.rows === "number"
-        ? `Google Sheet backup failed (${parsed.rows}).`
-        : "Google Sheet backup failed.",
+      `Google Sheet backup failed: ${parsed.error ?? "unknown error"}`,
     );
   }
 
   const spreadsheetId = parsed.spreadsheetId ?? "";
 
-  // The script writes to the sheet it is bound to. If that is not the sheet
-  // the owner expects, the copy would quietly end up somewhere they are not
-  // looking. The backup still succeeds — the mismatch is reported so it can
-  // be noticed and fixed.
+  // If the script wrote to a different spreadsheet than the owner expects,
+  // the copy would quietly end up somewhere they are not looking. The backup
+  // still succeeds; the mismatch is reported so it can be noticed and fixed.
   const expectedId = process.env.GOOGLE_SHEET_ID?.trim();
   if (expectedId && spreadsheetId && expectedId !== spreadsheetId) {
     console.warn(
-      `Backup: the Google Sheet backup went to spreadsheet ${spreadsheetId}, but GOOGLE_SHEET_ID says ${expectedId}. Check that the Apps Script is bound to the right sheet.`,
+      `Backup: the Google Sheet backup went to spreadsheet ${spreadsheetId}, but GOOGLE_SHEET_ID says ${expectedId}. Check SPREADSHEET_ID in the Apps Script properties.`,
     );
   }
 

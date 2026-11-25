@@ -143,6 +143,10 @@ function targetIsStale(
  * Never throws: every failure is reported in the returned result so the
  * caller can log it and decide what to do.
  */
+
+// console.log("sheet configured:", isGoogleSheetConfigured());
+// console.log("db configured:", isSecondaryConfigured());
+
 export async function runBackupSync(
   options: RunBackupSyncOptions,
 ): Promise<BackupSyncResult> {
@@ -420,7 +424,7 @@ export async function runBackupSync(
         }
       }
     }
-
+// console.log("targets:", JSON.stringify(targets));
     return finish(targets, snapshot.tripCount);
   } finally {
     if (secondary && locked) {
